@@ -10,6 +10,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Deprecated
 ### Removed
 ### Fixed
+- Corrected documentation to show Java 21 and Minecraft 1.21+ compatibility.
 ### Security
 
 ## [2.0.0] - 2026-07-01
