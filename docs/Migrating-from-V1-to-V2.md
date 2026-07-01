@@ -86,4 +86,4 @@ Then check startup logs for migration messages, and verify:
 - The selected `storageMethod` is correct.
 - `multiSetup.mode` is correct on every instance.
 - AFK bypass permissions match the new LoriTime 2 behavior.
-- Placeholder and command results show the expected migrated playtime.
+- PlaceholderAPI and command results show the expected migrated playtime.

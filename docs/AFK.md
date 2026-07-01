@@ -1,13 +1,12 @@
 ## Configuration
-> ⚠️If you want to use the AFK feature on your proxy, you need to do a [multiSetup](https://github.com/Lorias-Jak/LoriTime/wiki/Setup#setup-instructions---multi-server)! Install the LoriTime jar on your subserver and proxy.<br>
-> ⚠️If you use the MultiSetup, enable the AFK feature on the proxy master and on every Paper/Folia slave where players should be detected as AFK. The subserver detects inactivity and sends the AFK state to the proxy; the proxy applies time removal, kicks, and announcements.<br>
+> ⚠️ If you want to use the AFK feature on your proxy, you need a [multi-setup](https://github.com/Lorias-Jak/LoriTime/wiki/Setup#multi-setup-network-setup). Install LoriTime on the proxy and on every backend server that should detect AFK state.<br>
+> ⚠️ If you use multi-setup, enable the AFK feature on the proxy master and on every Paper/Folia slave where players should be detected as AFK. The backend detects inactivity and sends the AFK state to the proxy; the proxy applies time removal, kicks, and announcements.<br>
 
-* Set `afk.enabled` to `true`
-* Set `afk.after` to the wishing time of you, after wich time the player should be kicked. You should use the [TimeString](https://github.com/Lorias-Jak/LoriTime/wiki/Commands-&-Permissions#timestring-examples).
-* RemoveTime is for removing the time after which the player is considered afk. So if the player is AFK for 15 minutes, the time will be taken from his online time.
-* If `afk.autoKick` is on `true`, the player will automatically get kicked when he is considered afk.
-* `afk.repeatedCheck` is the time, after wich the server will check the time the player hasn't moved, interacted or written a message in the chat. Default its 30 seconds. It's recommended
-* to not put it under 10 seconds.
+* Set `afk.enabled` to `true`.
+* Set `afk.after` to the time after which a player should be considered AFK. You can use the [TimeString](https://github.com/Lorias-Jak/LoriTime/wiki/Commands#timestring-examples) format.
+* Set `afk.removeTime` to `true` if AFK time should be removed from the player's online time.
+* Set `afk.autoKick` to `true` if players should be kicked when they are considered AFK.
+* Set `afk.repeatCheck` to the interval for checking whether a player has moved, interacted, or written a chat message. The default is 30 seconds. It is recommended to keep this at 10 seconds or higher.
 
 ## The config part
 <details>
@@ -19,12 +18,12 @@
 ###########
 afk:
 
-  # In case you're using MultiSetup, enable this on the proxy master and on
+  # In case you're using multi-setup, enable this on the proxy master and on
   # every Paper/Folia slave where AFK detection should run.
   # Paper/Folia slaves detect inactivity; the proxy master applies kicks and time removal.
   # Do not change the value while the server is running!
   # The required classes will not be loaded if this option is false on startup.
-  # If you change the value to false in runtime and reload the plugin, it could lead into issues with the afk detection.
+  # If you change the value to false in runtime and reload the plugin, it could lead to issues with the afk detection.
   enabled: false
 
   # The time after which a player is considered AFK. You can use the unit-modifier for this.
@@ -34,7 +33,7 @@ afk:
   # If true, the time that the player is afk will be removed.
   removeTime: true
 
-  # If true, the player will be kicked after the time specified in 'kick.after'.
+  # If true, the player will be kicked after the time specified in 'afk.after'.
   autoKick: true
 
   # The time how often the plugin checks if a player is afk.
@@ -48,11 +47,11 @@ afk:
 
 | Feature                                                                                                                  | Permission                          |
 |--------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
-| The time will not be removed in case he is afk and the removeTime feature is enabled                                     | `loritime.afk.bypass.timeRemove`    |
-| Prevents the kick if the player went afk                                                                                 | `loritime.afk.bypass.kick`          |
+| The player's time will not be removed when they are AFK and `afk.removeTime` is enabled                                  | `loritime.afk.bypass.timeRemove`    |
+| Prevents the kick if the player went AFK                                                                                 | `loritime.afk.bypass.kick`          |
 | Bypasses the AFK stop-count behavior, so the player's time keeps counting while AFK                                      | `loritime.afk.bypass.stopCount`     |
-| Sends a message to all player with the permission, that the player went afk                                              | `loritime.afk.announce.afkAnnounce` |
-| Sends a kick message to alle the player with the permission, that the player were kicked because he were afk for time xy | `loritime.afk.announce.kick`        |
+| Sends a message to all players with the permission when a player becomes AFK                                             | `loritime.afk.announce.afkAnnounce` |
+| Sends a kick message to all players with the permission when a player is kicked for being AFK                            | `loritime.afk.announce.kick`        |
 
 ## Time Entry Reasons
 

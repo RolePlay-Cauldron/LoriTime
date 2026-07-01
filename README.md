@@ -1,7 +1,7 @@
 # LoriTime
 
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Java](https://img.shields.io/badge/java-25-orange.svg)](pom.xml)
+[![Java](https://img.shields.io/badge/java-21-orange.svg)](pom.xml)
 [![Minecraft](https://img.shields.io/badge/minecraft-1.21%2B-brightgreen.svg)](docs/Compatibility.md)
 [![Platform](https://img.shields.io/badge/platform-Paper%20%7C%20Folia%20%7C%20Velocity-5865f2.svg)](docs/Compatibility.md)
 
@@ -15,7 +15,7 @@ LoriTime tracks how long players are connected to a Minecraft server or network.
 - Stores data in SQLite, MySQL, or MariaDB.
 - Includes AFK handling, configurable commands, placeholders, localization, backups, and update checks.
 
-> LoriTime 2 development builds require Java 25. See [Compatibility](docs/Compatibility.md) for the full platform matrix.
+> LoriTime 2 development builds require Java 21. See [Compatibility](docs/Compatibility.md) for the full platform matrix.
 
 ## Installation
 

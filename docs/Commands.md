@@ -94,7 +94,7 @@ LoriTime provides a number of different commands that you can use. This page lis
 
 <br>
 
-> **Note:** The debugger will be turned off automatically after the configured time. Be aware that you need to enable the debugger via the console if you use MultiSetup.<br>
+> **Note:** The debugger will be turned off automatically after the configured time. Be aware that you need to enable the debugger via the console if you use multi-setup.<br>
 
 > **Note:** `reload`, `debug`, `info`, and `update` are admin subcommands and operate only on the instance where they are executed. In a multi-setup, run them on each proxy/backend instance that should be affected.
 

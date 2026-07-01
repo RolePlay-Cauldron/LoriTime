@@ -59,7 +59,7 @@ Startup migration and storage initialization are lifecycle exceptions. They may 
 
 | Platform | `standalone` | `master` | `slave` | Context source |
 |----------|--------------|----------|---------|----------------|
-| Paper/Folia | Supported | Supported | Supported | Configured server name plus Bukkit world outside proxy-owned sessions; current Bukkit world only as a proxy slave |
+| Paper/Folia | Supported | Supported | Supported | Configured server name plus current world outside proxy-owned sessions; current world only as a proxy slave |
 | Velocity | Supported | Supported | Not recommended | Backend server name plus latest slave-reported world or `global` fallback |
 
 Paper and Folia-compatible servers can provide player name, configured server context, and world context for session rows. Set the logical server name on every Paper/Folia instance:
@@ -69,7 +69,7 @@ server:
   name: 'survival-1'
 ```
 
-In a proxy multi-setup where the proxy runs as `master` and Paper/Folia servers run as `slave`, this value does not create canonical server entries. The proxy backend server name is the canonical server context, and the Paper/Folia slave reports only the player's current Bukkit world to enrich the master-owned active row.
+In a proxy multi-setup where the proxy runs as `master` and Paper/Folia servers run as `slave`, this value does not create canonical server entries. The proxy backend server name is the canonical server context, and the Paper/Folia slave reports only the player's current world to enrich the master-owned active row.
 
 Velocity can derive backend server names from proxy server-switch events. Proxies store proxy-written rows with:
 
