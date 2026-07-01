@@ -1,49 +1,27 @@
 ## Requirements
-> LoriTime has no dependency's as for now.<br>
-> It's compiled with Java 21!
 
-## Supportet platforms
-<table class="tg">
-<thead>
-  <tr>
-    <th class="tg-9wq8" rowspan="5">(Sub)-Server</th>
-    <th class="tg-0pky">Platform name</th>
-    <th class="tg-0pky">Supported Versions</th>
-  </tr>
-  <tr>
-    <th class="tg-0pky"><a href="https://getbukkit.org/">Bukkit</a></th>
-    <th class="tg-0pky">❌</th>
-  </tr>
-  <tr>
-    <th class="tg-0pky"><a href="https://getbukkit.org/">Spigot</a></th>
-    <th class="tg-0pky">❌</th>
-  </tr>
-  <tr>
-    <th class="tg-0lax"><a href="https://papermc.io/software/paper">Paper</a></th>
-    <th class="tg-0lax">✅ 1.21+</th>
-  </tr>
-  <tr>
-    <th class="tg-0lax"><a href="https://papermc.io/software/folia">Folia</a></th>
-    <th class="tg-0lax">✅ 1.21+</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <th class="tg-lboi" rowspan="4">Proxy's</th>
-    <th class="tg-0pky"><a href="https://papermc.io/software/velocity">Velocity</a></th>
-    <th class="tg-0pky">✅ lts</th>
-  </tr>
-  <tr>
-    <th class="tg-0pky"><a href="https://ci.md-5.net/job/BungeeCord/">BungeeCord</a></th>
-    <th class="tg-0pky">❌</th>
-  </tr>
-</tbody>
-</table>
+LoriTime is compiled for Java 21.
+
+No additional LoriTime dependency jar is required. Optional integrations, such as PlaceholderAPI, still need to be installed when you want to use those features.
+
+## Supported Platforms
+
+| Platform type | Platform | Supported versions |
+|---------------|----------|--------------------|
+| Server | [Paper](https://papermc.io/software/paper) | 1.21+ |
+| Server | [Folia](https://papermc.io/software/folia) | 1.21+ |
+| Proxy | [Velocity](https://papermc.io/software/velocity) | Velocity API 3.5 target |
+
+## Unsupported Platforms
+
+| Platform | Status |
+|----------|--------|
+| Bukkit | Not supported |
+| Spigot | Not supported |
+| BungeeCord | Not supported |
 
 ## Integrations
-LoriTime hooks into PlaceHolderAPI!
-You can find the supported [Placeholders here](https://github.com/Lorias-Jak/LoriTime/wiki/Placeholder).
-<br>
-<br>
-If there's need for a new Integration,
-open a [suggestion on GitHub](https://github.com/Lorias-Jak/LoriTime/issues/new/choose).
+
+LoriTime supports PlaceholderAPI on Paper/Folia servers. You can find the supported [placeholders here](https://github.com/Lorias-Jak/LoriTime/wiki/Placeholder).
+
+If you need a new integration, open a [suggestion on GitHub](https://github.com/Lorias-Jak/LoriTime/issues/new/choose).

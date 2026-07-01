@@ -7,6 +7,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
 ### Changed
+- Expanded and cleaned up setup, compatibility, placeholder, AFK, and storage documentation.
 ### Deprecated
 ### Removed
 ### Fixed
