@@ -81,6 +81,15 @@ Existing historical rows are not migrated to `PLAYER_AFK_KICK`. The new reason i
 
 After the first successful migration startup, regenerate all LoriTime-managed configuration and localization files. The automated migration preserves values where possible, but rewritten files lose their original formatting and comments; regenerating `config.yml` and language files gives you the clean LoriTime 2 templates to reapply your settings to.
 
+Bundled LoriTime 1 language files named `en.yml`, `de.yml`, or `zh.yml` are not automatically migrated to the LoriTime 2 localization schema or renamed to the new locale tags. LoriTime 2 creates the bundled language files again under `language/en-us.yml`, `language/de-de.yml`, or `language/zh-cn.yml` when those locales are configured. If an old root-level language file was moved into the `language/` folder during startup, it remains a legacy file and can be deleted after you have copied any custom text you still need.
+
+Set `general.language` to the LoriTime 2 locale file name without `.yml`, for example:
+
+```yml
+general:
+  language: 'de-de'
+```
+
 Then check startup logs for migration messages, and verify:
 
 - The selected `storageMethod` is correct.
