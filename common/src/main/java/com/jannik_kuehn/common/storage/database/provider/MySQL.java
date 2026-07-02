@@ -86,6 +86,10 @@ public class MySQL implements LoriTimeConnectionProvider {
 
     @Override
     public Connection getConnection() {
+        if (hikari == null) {
+            log.error("Database connection pool is not initialized.");
+            return null;
+        }
         final Connection con;
         try {
             con = hikari.getConnection();

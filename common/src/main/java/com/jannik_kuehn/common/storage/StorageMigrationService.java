@@ -2,6 +2,7 @@ package com.jannik_kuehn.common.storage;
 
 import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.LoriTimePlugin;
+import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.config.Configuration;
 import com.jannik_kuehn.common.config.YamlConfiguration;
 import com.jannik_kuehn.common.exception.StorageException;
@@ -13,7 +14,7 @@ import com.jannik_kuehn.common.storage.database.table.PlayerTable;
 import com.jannik_kuehn.common.storage.database.table.ServerTable;
 import com.jannik_kuehn.common.storage.database.table.TimeTable;
 import com.jannik_kuehn.common.storage.database.table.WorldTable;
-import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
+import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.SessionContextDefaults;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 
@@ -29,7 +30,7 @@ import java.util.UUID;
 /**
  * Handles storage migration before runtime storages are loaded.
  */
-@SuppressWarnings("PMD.TooManyMethods")
+@SuppressWarnings({"PMD.GodClass", "PMD.TooManyMethods"})
 public class StorageMigrationService {
 
     /**
@@ -61,6 +62,11 @@ public class StorageMigrationService {
      * Canonical table prefix used when importing legacy flat-file data.
      */
     private static final String CANONICAL_TABLE_PREFIX = "loritime";
+
+    /**
+     * Actor name used for migration-created adjustment rows.
+     */
+    private static final String MIGRATION_ACTOR = "MIGRATION";
 
     /**
      * The plugin instance.
@@ -95,8 +101,15 @@ public class StorageMigrationService {
      * @throws StorageException if migration fails
      */
     public void migrateIfNecessary() throws StorageException {
-        migrateLegacyFlatFilesIfPresent();
-        migrateSqlDatabaseIfNecessary();
+        final String storageMethod = loriTime.getConfig().getString("storageMethod", SQLITE_STORAGE_METHOD);
+        switch (storageMethod.toLowerCase(Locale.ROOT)) {
+            case SQLITE_STORAGE_METHOD -> migrateSqliteStorageIfNecessary();
+            case "mysql", "mariadb" -> {
+                logDetectedFlatFilesSkippedForSql();
+                migrateSqlDatabaseIfNecessary();
+            }
+            default -> throw new StorageException("Unsupported storage method: " + storageMethod);
+        }
     }
 
     /**
@@ -114,9 +127,9 @@ public class StorageMigrationService {
     }
 
     private void migrateSqlDatabaseIfNecessary() throws StorageException {
-        final String storageMethod = loriTime.getConfig().getString("storageMethod", "sqlite");
+        final String storageMethod = loriTime.getConfig().getString("storageMethod", SQLITE_STORAGE_METHOD);
         switch (storageMethod.toLowerCase(Locale.ROOT)) {
-            case "mysql", "mariadb", "sqlite" -> {
+            case "mysql", "mariadb", SQLITE_STORAGE_METHOD -> {
                 final DatabaseStorage databaseStorage = new DatabaseStorage(loriTime.getLoggerFactory(), loriTime.getConfig(), dataFolder);
                 try {
                     new DatabaseMigrationPreflight(databaseStorage, log).migrateIfNecessary();
@@ -128,21 +141,22 @@ public class StorageMigrationService {
         }
     }
 
-    private void migrateLegacyFlatFilesIfPresent() throws StorageException {
+    private void migrateSqliteStorageIfNecessary() throws StorageException {
         final File namesFile = findLegacyFile(NAMES_FILE);
         final File timeFile = findLegacyFile(TIME_FILE);
         final boolean importRequested = loriTime.getConfig().getBoolean(LEGACY_FLAT_FILE_IMPORT_PATH, false);
         if (!importRequested && !namesFile.exists() && !timeFile.exists()) {
+            migrateSqlDatabaseIfNecessary();
             return;
         }
         if (!namesFile.exists() && !timeFile.exists()) {
             log.warn("Legacy flat-file import was requested, but no legacy names.yml or time.yml file was found.");
             loriTime.getConfig().setValue(LEGACY_FLAT_FILE_IMPORT_PATH, false);
+            migrateSqlDatabaseIfNecessary();
             return;
         }
 
         log.info("Detected legacy flat-file storage. Migrating files to SQLite.");
-        loriTime.getConfig().setValue("storageMethod", SQLITE_STORAGE_METHOD);
 
         final DatabaseStorage databaseStorage = new DatabaseStorage(
                 loriTime.getLoggerFactory(), loriTime.getConfig(), dataFolder, CANONICAL_TABLE_PREFIX);
@@ -154,6 +168,15 @@ public class StorageMigrationService {
             loriTime.getConfig().setValue(LEGACY_FLAT_FILE_IMPORT_PATH, false);
         } finally {
             databaseStorage.shutdown();
+        }
+    }
+
+    private void logDetectedFlatFilesSkippedForSql() {
+        final File namesFile = findLegacyFile(NAMES_FILE);
+        final File timeFile = findLegacyFile(TIME_FILE);
+        if (namesFile.exists() || timeFile.exists()) {
+            log.warn("Detected legacy flat-file storage, but storageMethod is configured for SQL. "
+                    + "The files were queued for startup backup and will not be imported into SQLite.");
         }
     }
 
@@ -201,10 +224,8 @@ public class StorageMigrationService {
             final Optional<UUID> uuid = parseUuid(entry.getKey());
             final Optional<Long> time = parseLong(entry.getValue());
             if (uuid.isPresent() && time.isPresent()) {
-                final long now = System.currentTimeMillis();
-                storage.persistSession(new PlayerSessionChunk(uuid.get(), Optional.empty(),
-                        SessionContextDefaults.SERVER, SessionContextDefaults.WORLD, now - time.get() * 1000L, now,
-                        TimeEntryReason.LEGACY_IMPORT));
+                storage.addTime(new ManualTimeAdjustment(uuid.get(), time.get(), TimeEntryReason.LEGACY_IMPORT,
+                        MIGRATION_ACTOR, TimeScope.world(SessionContextDefaults.SERVER, SessionContextDefaults.WORLD)));
             }
         }
     }

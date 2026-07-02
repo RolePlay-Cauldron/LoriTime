@@ -49,9 +49,29 @@ class StorageMigrationServiceTest {
         service.migrateIfNecessary();
         service.migrateIfNecessary();
 
-        verify(config).setValue("storageMethod", "sqlite");
+        verify(config, never()).setValue("storageMethod", "sqlite");
         verify(config).setValue("storageMigration.legacyFlatFileImport", false);
         assertEquals(expectedMigrationResult(), migrationResult(legacyDataFolder), "legacy flat files should be imported once");
+    }
+
+    @Test
+    void configuredSqlStorageDoesNotImportLegacyFlatFilesIntoSqlite() throws IOException {
+        final File legacyDataFolder = new File(dataFolder, "data");
+        Files.createDirectories(legacyDataFolder.toPath());
+        final File namesFile = new File(legacyDataFolder, "names.yml");
+        final File timeFile = new File(legacyDataFolder, "time.yml");
+        Files.writeString(namesFile.toPath(), "Lorias_: 44174cf6-e76c-4994-899c-3387284ecd62\n");
+        Files.writeString(timeFile.toPath(), "44174cf6-e76c-4994-899c-3387284ecd62: 46194\n");
+        final Configuration config = sqlConfig();
+        final LoriTimePlugin plugin = pluginWithConfig(config);
+
+        final StorageMigrationService service = new StorageMigrationService(plugin, dataFolder);
+
+        assertThrows(StorageException.class, service::migrateIfNecessary);
+        verify(config, never()).setValue("storageMethod", "sqlite");
+        assertTrue(namesFile.exists(), "Expected SQL-selected migration to leave flat names file in place");
+        assertTrue(timeFile.exists(), "Expected SQL-selected migration to leave flat time file in place");
+        assertFalse(new File(dataFolder, "loritime.db").exists(), "Expected SQL-selected migration not to create SQLite");
     }
 
     private LoriTimePlugin pluginWithConfig(final Configuration config) {
@@ -67,6 +87,19 @@ class StorageMigrationServiceTest {
         when(config.getString("storageMethod")).thenReturn("sqlite");
         when(config.getString("data.tablePrefix", TABLE_PREFIX)).thenReturn(CUSTOM_TABLE_PREFIX);
         when(config.getBoolean("storageMigration.legacyFlatFileImport", false)).thenReturn(true, false);
+        return config;
+    }
+
+    private Configuration sqlConfig() {
+        final Configuration config = mock(Configuration.class);
+        when(config.getString("storageMethod", "sqlite")).thenReturn("mysql");
+        when(config.getString("storageMethod")).thenReturn("mysql");
+        when(config.getString("data.tablePrefix", TABLE_PREFIX)).thenReturn(TABLE_PREFIX);
+        when(config.getString("data.host")).thenReturn("localhost");
+        when(config.getInt("data.port")).thenReturn(3306);
+        when(config.getString("data.database")).thenReturn("minecraft");
+        when(config.getString("data.user")).thenReturn("");
+        when(config.getBoolean("storageMigration.legacyFlatFileImport", false)).thenReturn(false);
         return config;
     }
 
@@ -86,17 +119,21 @@ class StorageMigrationServiceTest {
                     hasLegacyStorageBackupDirectory(),
                     countRows(connection, TABLE_PREFIX + "_player"),
                     countRows(connection, TABLE_PREFIX + "_time"),
-                    sumTime(connection, "Lorias_"),
-                    sumTime(connection, "Kenhir"),
+                    countRows(connection, TABLE_PREFIX + "_time_adjustment"),
+                    sumAdjustment(connection, "Lorias_"),
+                    sumAdjustment(connection, "Kenhir"),
                     singleString(connection, "SELECT `name` FROM `" + TABLE_PREFIX + "_player` WHERE `name` = 'Lorias_'"),
                     singleString(connection, "SELECT `name` FROM `" + TABLE_PREFIX + "_player` WHERE `name` = 'Kenhir'"),
-                    singleString(connection, "SELECT `reason` FROM `" + TABLE_PREFIX + "_time`"),
-                    singleString(connection, "SELECT `world` FROM `" + TABLE_PREFIX + "_world`"));
+                    singleString(connection, "SELECT `reason` FROM `" + TABLE_PREFIX + "_time_adjustment`"),
+                    singleString(connection, "SELECT `scope_type` FROM `" + TABLE_PREFIX + "_time_adjustment`"),
+                    singleString(connection, "SELECT w.`world` FROM `" + TABLE_PREFIX + "_time_adjustment` a "
+                            + "JOIN `" + TABLE_PREFIX + "_world` w ON w.`id` = a.`world_id`"));
         }
     }
 
     private MigrationResult expectedMigrationResult() {
-        return new MigrationResult(false, false, true, true, false, 2, 2, 46_194, 3302, "Lorias_", "Kenhir", "LEGACY_IMPORT", "global");
+        return new MigrationResult(false, false, true, true, false, 2, 0, 2, 46_194, 3302,
+                "Lorias_", "Kenhir", "LEGACY_IMPORT", "WORLD", "global");
     }
 
     private int countRows(final Connection connection, final String table) throws SQLException {
@@ -115,10 +152,10 @@ class StorageMigrationServiceTest {
         }
     }
 
-    private int sumTime(final Connection connection, final String playerName) throws SQLException {
-        final String sql = "SELECT SUM(CAST((t.`leave_time` - t.`join_time`) / 1000 AS INTEGER)) "
-                + "FROM `" + TABLE_PREFIX + "_time` t "
-                + "JOIN `" + TABLE_PREFIX + "_player` p ON p.`id` = t.`player_id` "
+    private int sumAdjustment(final Connection connection, final String playerName) throws SQLException {
+        final String sql = "SELECT SUM(a.`amount_seconds`) "
+                + "FROM `" + TABLE_PREFIX + "_time_adjustment` a "
+                + "JOIN `" + TABLE_PREFIX + "_player` p ON p.`id` = a.`player_id` "
                 + "WHERE p.`name` = '" + playerName + "'";
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(sql)) {
@@ -141,11 +178,13 @@ class StorageMigrationServiceTest {
             boolean legacyStorageBackupDirectoryExists,
             int players,
             int timeEntries,
+            int adjustments,
             int loriasTime,
             int kenhirTime,
             String loriasName,
             String kenhirName,
             String reason,
+            String scopeType,
             String world) {
     }
 }

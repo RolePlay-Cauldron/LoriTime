@@ -8,7 +8,7 @@ LoriTime stores data in a database. You can choose between SQLite for a local fi
 | `mysql` | Database hosted on a MySQL server |
 | `mariadb` | Database hosted on a MariaDB server |
 
-Only MariaDB and SQLite are tested regularly. Legacy `yml` storage is no longer a regular storage mode. If LoriTime detects `data/names.yml` or `data/time.yml` on startup, it migrates them to SQLite.
+Only MariaDB and SQLite are tested regularly. Legacy `yml` storage is no longer a regular storage mode. Legacy `names.yml` and `time.yml` files are imported to SQLite only when the migrated configuration selects `storageMethod: sqlite`. When `storageMethod` is `mysql` or `mariadb`, LoriTime migrates the configured SQL database and backs up any local legacy flat files without importing them.
 
 ## Database Configuration
 
