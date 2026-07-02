@@ -43,7 +43,8 @@ class DatabaseMigrationPreflightTest {
         migrate();
 
         try (Connection connection = openSqlite()) {
-            final DatabaseSnapshot expected = new DatabaseSnapshot(2, false, true, true, true, true, true, 0, 0, null, "global");
+            final DatabaseSnapshot expected = new DatabaseSnapshot(2, false, true, true, true, true, true,
+                    0, 0, 0, null, null, "global");
             assertEquals(expected, snapshot(connection), "versioned databases should use the update path");
         }
     }
@@ -53,7 +54,8 @@ class DatabaseMigrationPreflightTest {
         migrate();
 
         try (Connection connection = openSqlite()) {
-            final DatabaseSnapshot expected = new DatabaseSnapshot(2, false, true, true, true, true, true, 0, 0, null, "global");
+            final DatabaseSnapshot expected = new DatabaseSnapshot(2, false, true, true, true, true, true,
+                    0, 0, 0, null, null, "global");
             assertEquals(expected, snapshot(connection), "fresh databases should run first startup schema creation");
         }
     }
@@ -82,7 +84,7 @@ class DatabaseMigrationPreflightTest {
 
         try (Connection connection = openSqlite()) {
             final DatabaseSnapshot expected = new DatabaseSnapshot(2, false, true, true, true, true, true,
-                    1, 1, "LEGACY_IMPORT", "global");
+                    1, 0, 1, "LEGACY_IMPORT", "WORLD", "global");
             assertEquals(expected, snapshot(connection), "legacy v1 aggregate data should be imported into scoped storage");
         }
     }
@@ -169,7 +171,10 @@ class DatabaseMigrationPreflightTest {
                 adjustmentTableExists,
                 countRows(connection, TABLE_PREFIX + "_player"),
                 countRows(connection, TABLE_PREFIX + "_time"),
-                timeTableExists ? singleString(connection, "SELECT `reason` FROM `" + TABLE_PREFIX + "_time`") : null,
+                countRows(connection, TABLE_PREFIX + "_time_adjustment"),
+                adjustmentTableExists ? singleString(connection, "SELECT `reason` FROM `" + TABLE_PREFIX + "_time_adjustment`") : null,
+                adjustmentTableExists ? singleString(connection, "SELECT `scope_type` FROM `"
+                        + TABLE_PREFIX + "_time_adjustment`") : null,
                 worldTableExists ? singleString(connection, "SELECT `world` FROM `" + TABLE_PREFIX + "_world`") : null);
     }
 
@@ -183,7 +188,9 @@ class DatabaseMigrationPreflightTest {
             boolean adjustmentTableExists,
             int players,
             int timeEntries,
+            int adjustments,
             String reason,
+            String scopeType,
             String world) {
     }
 }

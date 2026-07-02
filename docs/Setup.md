@@ -35,7 +35,7 @@ LoriTime does not support multi-proxy setups.
 
 ## Storage Migration Note
 
-LoriTime 2 no longer uses `yml` as a regular storage mode. If legacy `data/names.yml` or `data/time.yml` files are detected, LoriTime imports them into SQLite and renames the old files with a `.migrated` suffix after a successful import.
+LoriTime 2 no longer uses `yml` as a regular storage mode. If the migrated configuration selects `storageMethod: sqlite`, LoriTime imports legacy `data/names.yml` or `data/time.yml` files into SQLite and renames the old files with a `.migrated` suffix after a successful import. If `storageMethod` is `mysql` or `mariadb`, LoriTime migrates the configured SQL database and backs up local legacy flat files without importing them.
 
 Back up your LoriTime data folder and SQL database before updating an existing production setup.
 

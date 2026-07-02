@@ -14,6 +14,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - Corrected documentation to show Java 21 and Minecraft 1.21+ compatibility.
 - Fixed command completions suggesting scoped `/lt` lookup arguments or AFK player targets that the sender cannot execute.
+- Fixed LoriTime 1 storage migration routing so SQL configurations migrate the configured SQL database instead of switching to SQLite because legacy flat files are present.
+- Migrated LoriTime 1 aggregate playtime as `LEGACY_IMPORT` adjustments scoped to `default/global` instead of synthetic session rows.
 ### Security
 
 ## [2.0.0] - 2026-07-01
