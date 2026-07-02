@@ -197,6 +197,7 @@ class LoriTimeCompletionTest {
     @Test
     void loriTimeTabCompletionUsesLiveServerCandidatesWithoutStorageLookup() throws StorageException {
         final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.server")).thenReturn(true);
         when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
 
         final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
@@ -209,6 +210,7 @@ class LoriTimeCompletionTest {
     @Test
     void loriTimeTabCompletionUsesLiveWorldCandidatesWithoutStorageLookup() throws StorageException {
         final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.world")).thenReturn(true);
         when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty()))
                 .thenReturn(List.of("world", "world_nether"));
 
@@ -224,6 +226,7 @@ class LoriTimeCompletionTest {
     void loriTimeTabCompletionUsesCachedServerCandidatesForShortFlags() throws StorageException {
         final CompletionContext context = new CompletionContext();
         context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        when(context.source.hasPermission("loritime.see.server")).thenReturn(true);
         when(context.server.getLiveServerNames()).thenReturn(List.of());
 
         final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
@@ -237,6 +240,7 @@ class LoriTimeCompletionTest {
     void loriTimeTabCompletionUsesCachedWorldCandidatesForShortFlags() throws StorageException {
         final CompletionContext context = new CompletionContext();
         context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        when(context.source.hasPermission("loritime.see.world")).thenReturn(true);
         when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty())).thenReturn(List.of());
 
         final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
@@ -244,6 +248,87 @@ class LoriTimeCompletionTest {
         assertEquals(List.of("w:world", "w:world_nether"), command.handleTabComplete(context.source, "s:survival", "w:wo"),
                 "Expected short world flag values from the cached scope names");
         verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void loriTimeTabCompletionHidesOtherPlayerServerPrefixWithoutOtherPermission() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.server")).thenReturn(true);
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source, "Lorias_", "s"),
+                "Expected other-player server prefix to require other server permission");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void loriTimeTabCompletionHidesOtherPlayerServerValuesWithoutOtherPermission() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.server")).thenReturn(true);
+        when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source, "Lorias_", "server:su"),
+                "Expected other-player server values to require other server permission");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void loriTimeTabCompletionSuggestsOtherPlayerServerScopeWithOtherPermission() {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.server.other")).thenReturn(true);
+        when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("server:"), command.handleTabComplete(context.source, "Lorias_", "s"),
+                "Expected other-player server prefix with other server permission");
+        assertEquals(List.of("server:survival"), command.handleTabComplete(context.source, "Lorias_", "server:su"),
+                "Expected other-player server values with other server permission");
+    }
+
+    @Test
+    void loriTimeTabCompletionHidesOtherPlayerWorldPrefixWithoutOtherPermission() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.world")).thenReturn(true);
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source, "Lorias_", "w"),
+                "Expected other-player world prefix to require other world permission");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void loriTimeTabCompletionHidesOtherPlayerWorldValuesWithoutOtherPermission() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.world")).thenReturn(true);
+        when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty()))
+                .thenReturn(List.of("world", "world_nether"));
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source, "Lorias_", "server:survival", "world:wo"),
+                "Expected other-player world values to require other world permission");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void loriTimeTabCompletionSuggestsOtherPlayerWorldScopeWithOtherPermission() {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.see.world.other")).thenReturn(true);
+        when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty()))
+                .thenReturn(List.of("world", "world_nether"));
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("world:"), command.handleTabComplete(context.source, "Lorias_", "w"),
+                "Expected other-player world prefix with other world permission");
+        assertEquals(List.of("world:world", "world:world_nether"),
+                command.handleTabComplete(context.source, "Lorias_", "server:survival", "world:wo"),
+                "Expected other-player world values with other world permission");
     }
 
     @Test
@@ -274,6 +359,24 @@ class LoriTimeCompletionTest {
     }
 
     @Test
+    void loriTimeTabCompletionUsesOtherTimeRangePermissionForOtherPlayerLookup() {
+        final CompletionContext context = new CompletionContext();
+        when(context.plugin.getKnownPlayerNames()).thenReturn(Set.of());
+        when(context.plugin.getRecentPlayerSuggestionCache()).thenReturn(null);
+        when(context.server.getOnlinePlayers()).thenReturn(new CommonPlayerSender[0]);
+        when(context.source.hasPermission("loritime.see.timerange")).thenReturn(true);
+
+        final LoriTimeCommand command = new LoriTimeCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source, "Lorias_", "t"),
+                "Expected other-player time range prefix to ignore self ranged permission");
+
+        when(context.source.hasPermission("loritime.see.timerange.other")).thenReturn(true);
+        assertEquals(List.of("time:"), command.handleTabComplete(context.source, "Lorias_", "t"),
+                "Expected other-player time range prefix with other ranged permission");
+    }
+
+    @Test
     void loriTimeTabCompletionDoesNotSuggestTimeValuesOrDuplicateTimeFlag() {
         final CompletionContext context = new CompletionContext();
         when(context.plugin.getKnownPlayerNames()).thenReturn(Set.of());
@@ -286,6 +389,48 @@ class LoriTimeCompletionTest {
                 "Expected no custom time range value suggestions");
         assertEquals(List.of(), command.handleTabComplete(context.source, "t:3d", "t"),
                 "Expected no duplicate time flag suggestion");
+    }
+
+    @Test
+    void modifyTabCompletionKeepsScopePrefixSuggestionsWithoutReadPermissions() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+
+        final LoriTimeModifyCommand command = new LoriTimeModifyCommand(context.plugin, context.localization,
+                mock(TimeParser.class));
+
+        assertEquals(List.of("server:"), command.handleTabComplete(context.source, "add", "Lorias_", "12", "s"),
+                "Expected admin modify prefix completion without read scope permissions");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void modifyTabCompletionKeepsScopeValueSuggestionsWithoutReadPermissions() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
+
+        final LoriTimeModifyCommand command = new LoriTimeModifyCommand(context.plugin, context.localization,
+                mock(TimeParser.class));
+
+        assertEquals(List.of("server:survival"), command.handleTabComplete(context.source, "add", "Lorias_", "12", "server:su"),
+                "Expected admin modify value completion without read scope permissions");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void afkTabCompletionDoesNotSuggestPlayerTargets() {
+        final CompletionContext context = new CompletionContext();
+        final CommonPlayerSender onlinePlayer = mock(CommonPlayerSender.class);
+        when(context.server.getOnlinePlayers()).thenReturn(new CommonPlayerSender[]{onlinePlayer});
+        when(onlinePlayer.getName()).thenReturn("OnlineUser");
+
+        final LoriTimeAfkCommand command = new LoriTimeAfkCommand(context.plugin, context.localization);
+
+        assertEquals(List.of(), command.handleTabComplete(context.source),
+                "Expected AFK completion to stay empty for self-only command");
+        assertEquals(List.of(), command.handleTabComplete(context.source, "O"),
+                "Expected AFK completion not to suggest player targets");
     }
 
     private void verifyNoSuggestionStorageLookup(final UnifiedStorage storage) throws StorageException {
@@ -316,6 +461,7 @@ class LoriTimeCompletionTest {
             when(plugin.getServer()).thenReturn(server);
             when(plugin.getPlayerConverter()).thenReturn(mock(LoriTimePlayerConverter.class));
             when(plugin.getScopeSuggestionCache()).thenReturn(scopeCache);
+            when(source.getName()).thenReturn("SourcePlayer");
         }
     }
 }

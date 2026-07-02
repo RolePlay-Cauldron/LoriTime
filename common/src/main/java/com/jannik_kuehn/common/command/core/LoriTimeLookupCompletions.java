@@ -13,6 +13,7 @@ import java.util.UUID;
 /**
  * Live completion source for `/loritime` lookup flags.
  */
+@SuppressWarnings("PMD.TooManyMethods")
 public final class LoriTimeLookupCompletions {
 
     /**
@@ -64,6 +65,7 @@ public final class LoriTimeLookupCompletions {
      * @param args current command arguments
      * @return matching completions
      */
+    @SuppressWarnings({"PMD.CognitiveComplexity", "PMD.CyclomaticComplexity"})
     public List<String> suggest(final CommonSender source, final String... args) {
         if (args.length == 0) {
             return suggestArgument(source, "", args);
@@ -71,15 +73,27 @@ public final class LoriTimeLookupCompletions {
         final String argument = args[args.length - 1];
         final String lowerArgument = argument.toLowerCase(Locale.ROOT);
         if (lowerArgument.startsWith(CommandScopes.SERVER_PREFIX)) {
+            if (!canSuggestServerValues(source, args)) {
+                return List.of();
+            }
             return suggestServerValues(CommandScopes.SERVER_PREFIX, argument);
         }
         if (lowerArgument.startsWith(CommandScopes.SHORT_SERVER_PREFIX)) {
+            if (!canSuggestServerValues(source, args)) {
+                return List.of();
+            }
             return suggestServerValues(CommandScopes.SHORT_SERVER_PREFIX, argument);
         }
         if (lowerArgument.startsWith(CommandScopes.WORLD_PREFIX)) {
+            if (!canSuggestWorldValues(source, args)) {
+                return List.of();
+            }
             return suggestWorldValues(source, CommandScopes.WORLD_PREFIX, argument, args);
         }
         if (lowerArgument.startsWith(CommandScopes.SHORT_WORLD_PREFIX)) {
+            if (!canSuggestWorldValues(source, args)) {
+                return List.of();
+            }
             return suggestWorldValues(source, CommandScopes.SHORT_WORLD_PREFIX, argument, args);
         }
         if (includeTimeRange
@@ -93,7 +107,7 @@ public final class LoriTimeLookupCompletions {
     private List<String> suggestArgument(final CommonSender source, final String argument, final String... args) {
         final String[] previousArgs = args.length == 0 ? args : Arrays.copyOf(args, args.length - 1);
         final List<String> suggestions = LookupScopeSuggestions.suggest(source, argument,
-                includeTimeRange, requireScopePermissions);
+                includeTimeRange, requireScopePermissions, isSelfLookup(source, previousArgs));
         if (findFlagValue(previousArgs, CommandScopes.SERVER_PREFIX, CommandScopes.SHORT_SERVER_PREFIX).isPresent()) {
             suggestions.remove(CommandScopes.SERVER_PREFIX);
         }
@@ -108,6 +122,18 @@ public final class LoriTimeLookupCompletions {
             suggestions.addAll(0, PlayerNameCompletions.suggest(plugin, argument));
         }
         return suggestions;
+    }
+
+    private boolean canSuggestServerValues(final CommonSender source, final String... args) {
+        return !requireScopePermissions || source.hasPermission(isSelfLookup(source, args)
+                ? "loritime.see.server"
+                : "loritime.see.server.other");
+    }
+
+    private boolean canSuggestWorldValues(final CommonSender source, final String... args) {
+        return !requireScopePermissions || source.hasPermission(isSelfLookup(source, args)
+                ? "loritime.see.world"
+                : "loritime.see.world.other");
     }
 
     private List<String> suggestServerValues(final String prefix, final String argument) {
@@ -154,6 +180,26 @@ public final class LoriTimeLookupCompletions {
 
     private boolean hasPlayerToken(final String... args) {
         return Arrays.stream(args).anyMatch(argument -> !argument.contains(":"));
+    }
+
+    private boolean isSelfLookup(final CommonSender source, final String... args) {
+        if (!(source instanceof final CommonPlayerSender playerSender)) {
+            return false;
+        }
+        final Optional<String> playerToken = Arrays.stream(args)
+                .filter(argument -> !argument.contains(":"))
+                .findFirst();
+        if (playerToken.isEmpty()) {
+            return true;
+        }
+        if (playerToken.get().equalsIgnoreCase(playerSender.getName())) {
+            return true;
+        }
+        final UUID sourceUniqueId = playerSender.getUniqueId();
+        return sourceUniqueId != null && plugin.getServer().getPlayer(playerToken.get())
+                .map(CommonPlayerSender::getUniqueId)
+                .filter(sourceUniqueId::equals)
+                .isPresent();
     }
 
     private boolean startsWithIgnoreCase(final String value, final String prefix) {

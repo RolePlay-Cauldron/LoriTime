@@ -12,6 +12,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 ### Fixed
 - Corrected documentation to show Java 21 and Minecraft 1.21+ compatibility.
+- Fixed command completions suggesting scoped `/lt` lookup arguments or AFK player targets that the sender cannot execute.
 ### Security
 
 ## [2.0.0] - 2026-07-01
