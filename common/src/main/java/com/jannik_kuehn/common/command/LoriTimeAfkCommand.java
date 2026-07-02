@@ -2,7 +2,6 @@ package com.jannik_kuehn.common.command;
 
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.command.core.CommandMessages;
-import com.jannik_kuehn.common.command.core.PlayerNameCompletions;
 import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.platform.CommonCommand;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
@@ -15,7 +14,6 @@ import java.util.stream.Collectors;
 /**
  * Command that toggles the sender's AFK state.
  */
-@SuppressWarnings("PMD.AvoidLiteralsInIfCondition")
 public class LoriTimeAfkCommand implements CommonCommand {
 
     /**
@@ -69,12 +67,6 @@ public class LoriTimeAfkCommand implements CommonCommand {
      */
     @Override
     public List<String> handleTabComplete(final CommonSender source, final String... args) {
-        if (args.length == 0) {
-            return PlayerNameCompletions.online(plugin, "");
-        }
-        if (args.length == 1) {
-            return PlayerNameCompletions.online(plugin, args[0]);
-        }
         return List.of();
     }
 

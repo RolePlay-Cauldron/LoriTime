@@ -26,25 +26,38 @@ final class LookupScopeSuggestions {
     /* default */ static List<String> suggest(final CommonSender source, final String argument,
                                               final boolean includeTimeRange,
                                               final boolean requireScopePermissions) {
+        return suggest(source, argument, includeTimeRange, requireScopePermissions, true);
+    }
+
+    /* default */ static List<String> suggest(final CommonSender source, final String argument,
+                                              final boolean includeTimeRange,
+                                              final boolean requireScopePermissions,
+                                              final boolean selfLookup) {
         final String lowerArgument = argument.toLowerCase(Locale.ROOT);
         final List<String> suggestions = new ArrayList<>();
-        suggestServer(source, lowerArgument, requireScopePermissions, suggestions);
-        suggestWorld(source, lowerArgument, requireScopePermissions, suggestions);
-        suggestTimeRange(source, lowerArgument, includeTimeRange, requireScopePermissions, suggestions);
+        suggestServer(source, lowerArgument, requireScopePermissions, selfLookup, suggestions);
+        suggestWorld(source, lowerArgument, requireScopePermissions, selfLookup, suggestions);
+        suggestTimeRange(source, lowerArgument, includeTimeRange, requireScopePermissions, selfLookup, suggestions);
         return suggestions;
     }
 
     private static void suggestServer(final CommonSender source, final String lowerArgument,
-                                      final boolean requireScopePermissions, final List<String> suggestions) {
-        if ((!requireScopePermissions || source.hasPermission("loritime.see.server"))
+                                      final boolean requireScopePermissions,
+                                      final boolean selfLookup,
+                                      final List<String> suggestions) {
+        final String permission = selfLookup ? "loritime.see.server" : "loritime.see.server.other";
+        if ((!requireScopePermissions || source.hasPermission(permission))
                 && CommandScopes.SERVER_PREFIX.startsWith(lowerArgument)) {
             suggestions.add(CommandScopes.SERVER_PREFIX);
         }
     }
 
     private static void suggestWorld(final CommonSender source, final String lowerArgument,
-                                     final boolean requireScopePermissions, final List<String> suggestions) {
-        if ((!requireScopePermissions || source.hasPermission("loritime.see.world"))
+                                     final boolean requireScopePermissions,
+                                     final boolean selfLookup,
+                                     final List<String> suggestions) {
+        final String permission = selfLookup ? "loritime.see.world" : "loritime.see.world.other";
+        if ((!requireScopePermissions || source.hasPermission(permission))
                 && CommandScopes.WORLD_PREFIX.startsWith(lowerArgument)) {
             suggestions.add(CommandScopes.WORLD_PREFIX);
         }
@@ -53,16 +66,19 @@ final class LookupScopeSuggestions {
     private static void suggestTimeRange(final CommonSender source, final String lowerArgument,
                                          final boolean includeTimeRange,
                                          final boolean requireScopePermissions,
+                                         final boolean selfLookup,
                                          final List<String> suggestions) {
-        if (includeTimeRange && canSuggestTimeRange(source, requireScopePermissions)
+        if (includeTimeRange && canSuggestTimeRange(source, requireScopePermissions, selfLookup)
                 && CommandScopes.TIME_PREFIX.startsWith(lowerArgument)) {
             suggestions.add(CommandScopes.TIME_PREFIX);
         }
     }
 
-    private static boolean canSuggestTimeRange(final CommonSender source, final boolean requireScopePermissions) {
+    private static boolean canSuggestTimeRange(final CommonSender source,
+                                               final boolean requireScopePermissions,
+                                               final boolean selfLookup) {
+        final String permission = selfLookup ? "loritime.see.timerange" : "loritime.see.timerange.other";
         return !requireScopePermissions
-                || source.hasPermission("loritime.see.timerange")
-                || source.hasPermission("loritime.see.timerange.other");
+                || source.hasPermission(permission);
     }
 }
