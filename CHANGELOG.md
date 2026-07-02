@@ -8,6 +8,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 ### Changed
 - Expanded and cleaned up setup, compatibility, placeholder, AFK, and storage documentation.
+- Updated several dependencies
 ### Deprecated
 ### Removed
 ### Fixed
