@@ -137,7 +137,7 @@
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
-        <version>6.1.0</version>
+        <version>6.1.1</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -174,12 +174,12 @@
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
         <artifactId>spellbook-core</artifactId>
-        <version>0.0.10-alpha</version>
+        <version>0.0.11-alpha</version>
       </dependency>
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
         <artifactId>spellbook-database</artifactId>
-        <version>0.0.10-alpha</version>
+        <version>0.0.11-alpha</version>
       </dependency>
 
       <!-- Module specific imports -->
@@ -198,7 +198,7 @@
       <dependency>
         <groupId>net.kyori</groupId>
         <artifactId>adventure-text-minimessage</artifactId>
-        <version>5.1.1</version>
+        <version>5.2.0</version>
         <scope>provided</scope>
       </dependency>
       <dependency>
@@ -571,12 +571,12 @@
             <dependency>
               <groupId>net.sourceforge.pmd</groupId>
               <artifactId>pmd-core</artifactId>
-              <version>7.25.0</version>
+              <version>7.26.0</version>
             </dependency>
             <dependency>
               <groupId>net.sourceforge.pmd</groupId>
               <artifactId>pmd-java</artifactId>
-              <version>7.25.0</version>
+              <version>7.26.0</version>
             </dependency>
             <dependency>
               <groupId>com.jannik_kuehn</groupId>
