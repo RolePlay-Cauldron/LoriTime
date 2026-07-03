@@ -1,4 +1,4 @@
-name: Build and Publish Wiki
+name: Build and Publish
 
 on:
   push:
@@ -124,23 +124,3 @@ jobs:
           args: |
             **/target/LoriTimePaper.jar
             **/target/LoriTimeVelocity.jar
-
-  update-wiki:
-    name: Update GitHub Wiki
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository content
-        uses: actions/checkout@v6
-
-      - name: Publish to Wiki
-        uses: Andrew-Chen-Wang/github-wiki-action@v5
-        with:
-          strategy: init
-          token: ${{ github.token }}
-          path: docs/
-          ignore: ''
