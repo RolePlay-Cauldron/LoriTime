@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 locale: 'de-de'
 prefix: '<#A4A4A4>[<#50CBAB>LoriTime<#A4A4A4>] '
 messages:
@@ -50,7 +50,7 @@ messages:
           self: '<#A4A4A4>Du hast <#50CBAB>[time] [scope][range] <#A4A4A4>gespielt.'
           other: '<#A4A4A4>Der Spieler <#50CBAB>[player] <#A4A4A4>hat <#50CBAB>[time] [scope][range] <#A4A4A4>gespielt.'
       loritimeadmin:
-        usage: '<#A4A4A4>Benutze <red>/ltmodify [add | set | reset] [player] [time] [server:<server>|s:<server>] [world:<world>|w:<world>] <#A4A4A4>um die Spielzeit zu ändern.<newline>Weitere Commands: <red>/loritimeadmin [reload | update | deleteUser]'
+        usage: '<#A4A4A4>Benutze <red>/ltmodify [add | set | reset] [player] [time] [server:<server>|s:<server>] [world:<world>|w:<world>] <#A4A4A4>um die Spielzeit zu ändern.<newline>Weitere Commands: <red>/loritimeadmin [reload | update | deleteUser | transfer | confirm]'
         missingUuid: '<#A4A4A4>Der Spieler <#50CBAB>[player] <#A4A4A4>ist unbekannt.'
         notTime: '<#A4A4A4>Das gegebene Zeitargument <#50CBAB>[argument] <#FF3232>hat ein ungültiges Format.'
         set:
@@ -73,6 +73,16 @@ messages:
           usage: '<#A4A4A4> Benutze <red>/onlinetimeadmin reload <#A4A4A4>um das Plugin neu zu laden.'
           success: '<#A4A4A4>Du hast <#1AFA29>erfolgreich <#A4A4A4>das Plugin neu geladen.'
           issue: '<#FF3232>Es ist ein Fehler beim neuladen des Plugins aufgetreten. Die Zeit wird nicht weiter gezählt!'
+        transfer:
+          usage: '<#A4A4A4>Benutze <red>/loritimeadmin transfer [player] server:<source> [world:<source>] to-server:<target> [to-world:<target>] [time:<range>] <#A4A4A4>um das Verschieben von Daten vorzubereiten. Ohne Spieler werden alle Spieler verschoben.'
+          preview: '<#A4A4A4>Transfer-Vorschau fuer <#50CBAB>[player]<#A4A4A4>: <#50CBAB>[source] <#A4A4A4>nach <#50CBAB>[target]<#A4A4A4>, Zeitraum <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>Sitzungen, <#50CBAB>[adjustments] <#A4A4A4>Anpassungen, <#50CBAB>[players] <#A4A4A4>Spieler, Merge <#50CBAB>[merge]<#A4A4A4>. Nutze <red>/lta confirm <#A4A4A4>innerhalb von 15 Sekunden zum Anwenden.'
+          warning: '<#FF3232>WARNUNG: Dieser Transfer schreibt gespeicherte Verlaufsdaten um und kann von LoriTime nicht rueckgaengig gemacht werden. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
+          success: '<#1AFA29>Transfer abgeschlossen: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
+          failure: '<#FF3232>Speichertransfer fehlgeschlagen.'
+        confirm:
+          none: '<#FF3232>Es gibt keine ausstehende Admin-Aktion zum Bestätigen.'
+          expired: '<#FF3232>Die ausstehende Admin-Aktion ist abgelaufen. Führe die Vorschau erneut aus.'
+          failure: '<#FF3232>Die bestätigte Admin-Aktion ist fehlgeschlagen.'
       top:
         usage: '<#A4A4A4>Benutze <red>/onlinetimetop [page] <#A4A4A4>um dir die Top Onlinezeit der Spieler anzeigen zu lassen.'
         gatheringData: '<#A4A4A4>Sammle daten zusammen und berechne...'

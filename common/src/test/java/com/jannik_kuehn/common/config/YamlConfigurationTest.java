@@ -179,10 +179,11 @@ class YamlConfigurationTest {
         final Configuration migrated = fileManager.getConfiguration(
                 fileManager.getOrCreateLanguageFile("en-us"));
 
-        assertEquals(1, migrated.getInt("schema_version"));
+        assertEquals(2, migrated.getInt("schema_version"));
         assertEquals("custom no permission", migrated.getString("messages.message.noPermission"));
         assertEquals("custom second", migrated.getString("messages.unit.second.singular"));
         assertTrue(migrated.containsKey("messages.message.command.loritime.usage"));
+        assertTrue(migrated.containsKey("messages.message.command.loritimeadmin.transfer.warning"));
     }
 
     @Test

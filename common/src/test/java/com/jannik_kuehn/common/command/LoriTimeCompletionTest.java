@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("PMD.UnitTestContainsTooManyAsserts")
 class LoriTimeCompletionTest {
 
     private static final UUID PLAYER_ID = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
@@ -419,6 +420,74 @@ class LoriTimeCompletionTest {
     }
 
     @Test
+    void adminTransferCompletionUsesCachedPlayerNamesWithoutStorageLookup() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin.getKnownPlayerNames()).thenReturn(Set.of("Lorias_"));
+        when(context.server.getOnlinePlayers()).thenReturn(new CommonPlayerSender[0]);
+
+        final List<String> completions = new LoriTimeAdminCommand(context.plugin, context.localization)
+                .handleTabComplete(context.source, "transfer", "L");
+
+        assertEquals(List.of("Lorias_"), completions, "Expected transfer player completion from cache");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void adminTransferCompletionUsesLiveAndCachedScopeCandidatesWithoutStorageLookup() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        context.scopeCache.replaceStoredNames(Set.of("cached-survival"), Set.of("cached-world"));
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
+        when(context.server.getLiveWorldNames(Optional.empty(), Optional.empty())).thenReturn(List.of());
+
+        final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("server:survival"),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "server:su"),
+                "Expected source server values from live runtime context");
+        assertEquals(List.of("to-server:survival"),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "to-server:su"),
+                "Expected target server values from live runtime context");
+        assertEquals(List.of("to-world:cached-world"),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "to-world:cached"),
+                "Expected target world values from cached scope names");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void adminTransferCompletionSuggestsMissingFlagsAndConfirm() {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+
+        final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("world:"),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "server:survival", "w"),
+                "Expected remaining transfer flags matching the typed prefix");
+        assertEquals(List.of("to-server:", "to-world:"),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "server:survival", "to"),
+                "Expected target transfer flags matching the typed prefix");
+        assertEquals(List.of(),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "server:survival", "c"),
+                "Expected confirm to stay a top-level admin subcommand");
+        assertEquals(List.of(),
+                command.handleTabComplete(context.source, "transfer", "Lorias_", "time:3d", "time"),
+                "Expected duplicate time flag to stay unsuggested");
+    }
+
+    @Test
+    void adminTabCompletionSuggestsConfirmSubcommand() {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+
+        final List<String> completions = new LoriTimeAdminCommand(context.plugin, context.localization)
+                .handleTabComplete(context.source, "c");
+
+        assertEquals(List.of("confirm"), completions, "Expected top-level confirm completion");
+    }
+
+    @Test
     void afkTabCompletionDoesNotSuggestPlayerTargets() {
         final CompletionContext context = new CompletionContext();
         final CommonPlayerSender onlinePlayer = mock(CommonPlayerSender.class);
@@ -448,7 +517,13 @@ class LoriTimeCompletionTest {
 
         private final Localization localization = mock(Localization.class);
 
+        private final com.jannik_kuehn.common.config.Configuration config =
+                mock(com.jannik_kuehn.common.config.Configuration.class);
+
         private final CommonServer server = mock(CommonServer.class);
+
+        private final com.jannik_kuehn.common.scheduler.PluginScheduler scheduler =
+                mock(com.jannik_kuehn.common.scheduler.PluginScheduler.class);
 
         private final CommonPlayerSender source = mock(CommonPlayerSender.class);
 
@@ -458,9 +533,12 @@ class LoriTimeCompletionTest {
             when(plugin.getLoggerFactory()).thenReturn(new LoggerFactory(Logger.getLogger("test")));
             when(plugin.getStorage()).thenReturn(storage);
             when(plugin.getLocalization()).thenReturn(localization);
+            when(plugin.getConfig()).thenReturn(config);
+            when(plugin.getScheduler()).thenReturn(scheduler);
             when(plugin.getServer()).thenReturn(server);
             when(plugin.getPlayerConverter()).thenReturn(mock(LoriTimePlayerConverter.class));
             when(plugin.getScopeSuggestionCache()).thenReturn(scopeCache);
+            when(config.getBoolean(anyString())).thenReturn(false);
             when(source.getName()).thenReturn("SourcePlayer");
         }
     }

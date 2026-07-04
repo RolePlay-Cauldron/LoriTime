@@ -16,8 +16,16 @@ import com.jannik_kuehn.common.player.LoriTimePlayerConverter;
 import com.jannik_kuehn.common.player.TrackedLoriTimePlayer;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
 import com.jannik_kuehn.common.scheduler.PluginTask;
+import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
+import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
+import com.jannik_kuehn.common.storage.model.StorageMaintenanceOperation;
+import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
+import com.jannik_kuehn.common.storage.model.StorageMaintenanceResult;
+import com.jannik_kuehn.common.storage.model.StorageMaintenanceScope;
+import com.jannik_kuehn.common.storage.model.StorageTransferMapping;
+import com.jannik_kuehn.common.storage.model.StorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 import com.jannik_kuehn.common.utils.TimeParser;
 import net.kyori.adventure.text.Component;
@@ -26,13 +34,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
@@ -40,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings({"PMD.CouplingBetweenObjects", "PMD.GodClass", "PMD.UnitTestContainsTooManyAsserts"})
 class SenderRoleCommandTest {
 
     private static final UUID PLAYER_ID = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
@@ -192,7 +204,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "server:survival", "time:3d-4w");
 
         verify(context.storage()).getTime(eq(PLAYER_ID), eq(TimeScope.server("survival")), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -207,7 +219,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "time:3d");
 
         verify(context.storage(), never()).getTime(eq(PLAYER_ID), eq(TimeScope.GLOBAL), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -225,7 +237,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "Lorias_", "time:3d");
 
         verify(context.storage()).getTime(eq(PLAYER_ID), eq(TimeScope.GLOBAL), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -240,7 +252,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "Lorias_", "time:3d");
 
         verify(context.storage(), never()).getTime(eq(PLAYER_ID), eq(TimeScope.GLOBAL), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -394,6 +406,256 @@ class SenderRoleCommandTest {
 
         command.execute(sender, "update");
         verify(updater).isUpdateAvailable();
+    }
+
+    @Test
+    void adminTransferPreviewsPlayerServerTransfer() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "server:survival", "to-server:target", "time:3d");
+
+        final ArgumentCaptor<PlayerStorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(PlayerStorageTransferRequest.class);
+        verify(maintenance).previewPlayerTransfer(requestCaptor.capture());
+        verify(maintenance, never()).applyPlayerTransfer(any(), any());
+        assertEquals(PLAYER_ID, requestCaptor.getValue().playerUuid(), "Expected resolved player UUID");
+        assertEquals(Optional.of("Lorias_"), requestCaptor.getValue().playerName(), "Expected selected player name");
+        assertEquals(StorageMaintenanceScope.server("survival"), requestCaptor.getValue().mapping().source(),
+                "Expected source server");
+        assertEquals(StorageMaintenanceScope.server("target"), requestCaptor.getValue().mapping().target(),
+                "Expected target server");
+        assertTrue(requestCaptor.getValue().timeRange().isPresent(), "Expected parsed time range");
+        assertEquals(Optional.of("3d"), requestCaptor.getValue().timeRangeInput(), "Expected raw time range");
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferAppliesQueuedWorldTransferAfterConfirm() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        final StorageMaintenancePreview preview = transferPreview();
+        when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(preview);
+        when(maintenance.applyPlayerTransfer(any(PlayerStorageTransferRequest.class), eq(preview.confirmation())))
+                .thenReturn(new StorageMaintenanceResult(StorageMaintenanceOperation.WORLD_TRANSFER, 2L, 1L, 1L));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "server:survival", "world:old", "to-server:target",
+                "to-world:new");
+        command.execute(sender, "confirm");
+
+        final ArgumentCaptor<PlayerStorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(PlayerStorageTransferRequest.class);
+        verify(maintenance).applyPlayerTransfer(requestCaptor.capture(), eq(preview.confirmation()));
+        assertEquals(StorageMaintenanceScope.world("survival", "old"), requestCaptor.getValue().mapping().source(),
+                "Expected source world");
+        assertEquals(StorageMaintenanceScope.world("target", "new"), requestCaptor.getValue().mapping().target(),
+                "Expected target world");
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferPreviewsAllPlayerServerTransferWhenPlayerOmitted() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(maintenance.previewTransfer(any(StorageTransferRequest.class))).thenReturn(transferPreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "server:survival", "to-server:target");
+
+        final ArgumentCaptor<StorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(StorageTransferRequest.class);
+        verify(maintenance).previewTransfer(requestCaptor.capture());
+        verify(maintenance, never()).previewPlayerTransfer(any(PlayerStorageTransferRequest.class));
+        assertEquals(StorageMaintenanceOperation.SERVER_TRANSFER, requestCaptor.getValue().operation(),
+                "Expected full server transfer");
+        assertEquals(StorageMaintenanceScope.server("survival"), requestCaptor.getValue().mappings().get(0).source(),
+                "Expected source server");
+        assertEquals(StorageMaintenanceScope.server("target"), requestCaptor.getValue().mappings().get(0).target(),
+                "Expected target server");
+    }
+
+    @Test
+    void adminTransferAppliesQueuedAllPlayerWorldTransferAfterConfirm() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        final StorageMaintenancePreview preview = transferPreview();
+        when(maintenance.previewTransfer(any(StorageTransferRequest.class))).thenReturn(preview);
+        when(maintenance.applyTransfer(any(StorageTransferRequest.class), eq(preview.confirmation())))
+                .thenReturn(new StorageMaintenanceResult(StorageMaintenanceOperation.WORLD_TRANSFER, 4L, 2L, 2L));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "server:survival", "world:old", "to-world:new");
+        command.execute(sender, "confirm");
+
+        final ArgumentCaptor<StorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(StorageTransferRequest.class);
+        verify(maintenance).applyTransfer(requestCaptor.capture(), eq(preview.confirmation()));
+        assertEquals(StorageMaintenanceOperation.WORLD_TRANSFER, requestCaptor.getValue().operation(),
+                "Expected full world transfer");
+        assertEquals(StorageMaintenanceScope.world("survival", "old"), requestCaptor.getValue().mappings().get(0).source(),
+                "Expected source world");
+        assertEquals(StorageMaintenanceScope.world("survival", "new"), requestCaptor.getValue().mappings().get(0).target(),
+                "Expected target world");
+    }
+
+    @Test
+    void adminTransferRejectsAllPlayerTimeRange() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "server:survival", "to-server:target", "time:3d");
+
+        verify(maintenance, never()).previewTransfer(any());
+        verify(maintenance, never()).previewPlayerTransfer(any());
+        verify(sender).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferDefaultsWorldSourceToLocalServer() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(context.server().getLocalServerName()).thenReturn(Optional.of("survival"));
+        when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "world:old", "to-world:new");
+
+        final ArgumentCaptor<PlayerStorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(PlayerStorageTransferRequest.class);
+        verify(maintenance).previewPlayerTransfer(requestCaptor.capture());
+        assertEquals(StorageMaintenanceScope.world("survival", "old"), requestCaptor.getValue().mapping().source(),
+                "Expected local source world");
+        assertEquals(StorageMaintenanceScope.world("survival", "new"), requestCaptor.getValue().mapping().target(),
+                "Expected local target world");
+    }
+
+    @Test
+    void adminTransferDefaultsWorldSourceToProxyCurrentServer() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(context.server().isProxy()).thenReturn(true);
+        when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("minigames"));
+        when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "world:old", "to-world:new");
+
+        final ArgumentCaptor<PlayerStorageTransferRequest> requestCaptor =
+                ArgumentCaptor.forClass(PlayerStorageTransferRequest.class);
+        verify(maintenance).previewPlayerTransfer(requestCaptor.capture());
+        assertEquals(StorageMaintenanceScope.world("minigames", "old"), requestCaptor.getValue().mapping().source(),
+                "Expected current proxy source world");
+        assertEquals(StorageMaintenanceScope.world("minigames", "new"), requestCaptor.getValue().mapping().target(),
+                "Expected current proxy target world");
+    }
+
+    @Test
+    void adminTransferRejectsUnresolvedProxyWorldDefault() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(context.server().isProxy()).thenReturn(true);
+        when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.empty());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "world:old", "to-world:new");
+
+        verify(maintenance, never()).previewPlayerTransfer(any());
+        verify(sender).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminConfirmRejectsExpiredPendingTransfer() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AtomicReference<Runnable> timeout = new AtomicReference<>();
+        when(context.plugin().getScheduler().runAsyncOnceLater(eq(15L), any())).thenAnswer(invocation -> {
+            timeout.set(invocation.getArgument(1));
+            return mock(PluginTask.class);
+        });
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "server:survival", "to-server:target");
+        timeout.get().run();
+        command.execute(sender, "confirm");
+
+        verify(maintenance, never()).applyPlayerTransfer(any(), any());
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminConfirmRejectsWithoutPendingAction() {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "confirm");
+
+        verify(sender).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferRejectsUnknownPlayerBeforePreview() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = mock(AdminStorageMaintenance.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(sender.getName()).thenReturn("Console");
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.of(maintenance));
+        when(context.storage().getUuid("Missing")).thenReturn(Optional.empty());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Missing", "server:survival", "to-server:target");
+
+        verify(maintenance, never()).previewPlayerTransfer(any());
+        verify(sender).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferRejectsUnsupportedRuntimeAndStorage() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(false);
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "transfer", "Lorias_", "server:survival", "to-server:target");
+
+        verify(context.storage(), never()).getUuid(anyString());
+
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.empty());
+        command.execute(sender, "transfer", "Lorias_", "server:survival", "to-server:target");
+
+        verify(context.storage(), never()).getUuid(anyString());
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminTransferRequiresAdminPermission() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(false);
+
+        new LoriTimeAdminCommand(context.plugin(), context.localization())
+                .execute(sender, "transfer", "Lorias_", "server:survival", "to-server:target");
+
+        verify(context.storage(), never()).getUuid(anyString());
+        verify(sender).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -567,12 +829,31 @@ class SenderRoleCommandTest {
         when(context.playerConverter().getOnlinePlayer(PLAYER_ID)).thenReturn(new TrackedLoriTimePlayer(PLAYER_ID, "Lorias_"));
     }
 
+    private AdminStorageMaintenance prepareTransferMaintenance(final CommandContext context, final CommonSender sender)
+            throws StorageException {
+        final AdminStorageMaintenance maintenance = mock(AdminStorageMaintenance.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.of(maintenance));
+        when(context.storage().getUuid("Lorias_")).thenReturn(Optional.of(PLAYER_ID));
+        return maintenance;
+    }
+
+    private StorageMaintenancePreview transferPreview() {
+        return new StorageMaintenancePreview(StorageMaintenanceOperation.SERVER_TRANSFER,
+                List.of(new StorageTransferMapping(StorageMaintenanceScope.server("survival"),
+                        StorageMaintenanceScope.server("target"))),
+                null, 2L, 1L, 1L, true, List.of("target/world"), true, Optional.of(PLAYER_ID),
+                Optional.of("Lorias_"), Optional.empty(), Optional.empty(), "fingerprint");
+    }
+
     private LoriTimeModifyCommand modifyCommand(final CommandContext context) {
         return new LoriTimeModifyCommand(context.plugin(), context.localization(), mock(TimeParser.class));
     }
 
     private LoriTimeAdminCommand prepareAdminCommand(final CommandContext context, final CommonSender sender) {
         when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(sender.getName()).thenReturn("Console");
         return new LoriTimeAdminCommand(context.plugin(), context.localization());
     }
 

@@ -20,7 +20,7 @@ final class LocalizationLoader {
     /**
      * The schema version of the localization file format.
      */
-    private static final int SUPPORTED_SCHEMA_VERSION = 1;
+    private static final int SUPPORTED_SCHEMA_VERSION = 2;
 
     /**
      * The key for the prefix field in the localization file.

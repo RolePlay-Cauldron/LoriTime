@@ -82,14 +82,15 @@ class ConfigMigrationPipelineTest {
     }
 
     @Test
-    void localizationSchemaDoesNotMigrateLegacyLanguageKeys() {
+    void localizationSchemaAddsTransferWarningWithoutMigratingLegacyLanguageKeys() {
         final StructuredConfigurationDocument document = new StructuredConfigurationDocument(Map.of(
                 "schema_version", 1,
+                "locale", "en-us",
                 "messages", Map.of(
                         "message.nopermission", "legacy permission",
                         "message.customPlugin.custom_key", "custom value")));
         final StructuredConfigurationDocument template = new StructuredConfigurationDocument(Map.of(
-                "schema_version", 1,
+                "schema_version", 2,
                 "messages", Map.of(
                         "message.noPermission", "default permission")));
 
@@ -100,8 +101,10 @@ class ConfigMigrationPipelineTest {
 
         assertEquals("legacy permission", resultMessages.get("message.nopermission"));
         assertEquals("custom value", resultMessages.get("message.customPlugin.custom_key"));
+        assertEquals(2, result.document().get("schema_version"));
+        assertNotNull(result.document().get("messages.message.command.loritimeadmin.transfer.warning"));
         assertEquals("default permission", mergedMessages.get("message.noPermission"));
-        assertEquals(1, merged.get("schema_version"));
+        assertEquals(2, merged.get("schema_version"));
     }
 
     @Test
