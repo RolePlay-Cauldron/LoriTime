@@ -358,6 +358,11 @@ class AccumulatingTimeStorageTest {
         }
 
         @Override
+        public Map<String, Set<String>> getKnownWorldNamesByServer() {
+            return Map.of();
+        }
+
+        @Override
         public OptionalLong getTime(final UUID uniqueId) {
             return getTime(uniqueId, TimeScope.GLOBAL);
         }

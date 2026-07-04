@@ -91,6 +91,14 @@ public interface UnifiedStorage extends TimeQueryStorage, TimeAdjustmentStorage,
      */
     Set<String> getKnownWorldNames() throws StorageException;
 
+    /**
+     * Returns known world names grouped by server for command completion cache refreshes.
+     *
+     * @return known world names by server name
+     * @throws StorageException if lookup fails
+     */
+    Map<String, Set<String>> getKnownWorldNamesByServer() throws StorageException;
+
     @Override
     OptionalLong getTime(UUID uniqueId) throws StorageException;
 

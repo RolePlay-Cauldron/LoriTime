@@ -38,6 +38,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,6 +59,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
         "PMD.CyclomaticComplexity",
         "PMD.ExceptionAsFlowControl",
         "PMD.GodClass",
+        "PMD.InefficientStringBuffering",
         "PMD.TooManyMethods"
 })
 public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaintenance {
@@ -474,6 +476,21 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     }
 
     @Override
+    public Map<String, Set<String>> getKnownWorldNamesByServer() throws StorageException {
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection()) {
+                return worldTable.getAllWorldsByServer(connection, timeTableName);
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
     public Map<String, ?> getAllTimeEntries() throws StorageException {
         poolLock.readLock().lock();
         try {
@@ -840,11 +857,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                 try {
                     final StorageMaintenancePreview preview = buildDeletePreview(connection, request);
                     validateConfirmation(preview, confirmation);
-                    if (request.scope().type() == StorageMaintenanceScope.Type.SERVER) {
-                        deleteServerScope(connection, request.scope().server());
-                    } else {
-                        deleteWorldScope(connection, request.scope().server(), request.scope().world());
-                    }
+                    applyDeleteRequest(connection, request);
                     connection.commit();
                     return new StorageMaintenanceResult(preview.operation(), preview.affectedSessions(),
                             preview.affectedAdjustments(), preview.affectedPlayers());
@@ -1102,16 +1115,42 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     private StorageMaintenancePreview buildDeletePreview(final Connection connection,
                                                          final StorageDeleteRequest request) throws SQLException {
         final StorageMaintenanceScope scope = request.scope();
-        final Counts counts = switch (scope.type()) {
+        final Counts counts = countDeleteRequest(connection, request);
+        final StorageMaintenanceOperation operation = scope.type() == StorageMaintenanceScope.Type.SERVER
+                ? StorageMaintenanceOperation.SERVER_DELETE : StorageMaintenanceOperation.WORLD_DELETE;
+        return new StorageMaintenancePreview(operation, List.of(), scope, counts.sessions(), counts.adjustments(),
+                counts.players(), false, List.of(), counts.hasData(), request.playerUuid(), request.playerName(),
+                request.timeRange(), request.timeRangeInput(),
+                fingerprint(operation, List.of().toString(), deleteFingerprintScope(request), counts, false, List.of()));
+    }
+
+    private Counts countDeleteRequest(final Connection connection, final StorageDeleteRequest request)
+            throws SQLException {
+        final StorageMaintenanceScope scope = request.scope();
+        if (request.playerUuid().isPresent()) {
+            final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid().get());
+            if (playerId.isEmpty()) {
+                return Counts.empty();
+            }
+            return scope.type() == StorageMaintenanceScope.Type.SERVER
+                    ? countPlayerServer(connection, playerId.get(), scope.server(), request.timeRange())
+                    : countPlayerWorld(connection, playerId.get(), scope.server(), scope.world(), request.timeRange());
+        }
+        if (request.timeRange().isPresent()) {
+            final DeleteSelection selection = selectDeleteRows(connection, request);
+            return new Counts(selection.sessionIds().size(), selection.adjustmentIds().size(), selection.playerIds().size());
+        }
+        return switch (scope.type()) {
             case SERVER -> countServer(connection, scope.server());
             case WORLD -> countWorld(connection, scope.server(), scope.world());
             case STORAGE -> throw new SQLException("delete scope must be server or world");
         };
-        final StorageMaintenanceOperation operation = scope.type() == StorageMaintenanceScope.Type.SERVER
-                ? StorageMaintenanceOperation.SERVER_DELETE : StorageMaintenanceOperation.WORLD_DELETE;
-        return new StorageMaintenancePreview(operation, List.of(), scope, counts.sessions(), counts.adjustments(),
-                counts.players(), false, List.of(), counts.hasData(),
-                fingerprint(operation, List.of().toString(), scope.toString(), counts, false, List.of()));
+    }
+
+    private String deleteFingerprintScope(final StorageDeleteRequest request) {
+        return request.scope() + ":"
+                + request.playerUuid().map(UUID::toString).orElse("all") + ":"
+                + request.timeRange().map(TimeRange::toString).orElse("all");
     }
 
     private void validateConfirmation(final StorageMaintenancePreview preview,
@@ -1582,6 +1621,187 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         setRangeParam(statement, startIndex + 1, range.get().endExclusive());
     }
 
+    private void applyDeleteRequest(final Connection connection, final StorageDeleteRequest request) throws SQLException {
+        if (request.playerUuid().isPresent() || request.timeRange().isPresent()) {
+            deleteSelectedRows(connection, request);
+            cleanupDeleteScope(connection, request.scope());
+            return;
+        }
+        if (request.scope().type() == StorageMaintenanceScope.Type.SERVER) {
+            deleteServerScope(connection, request.scope().server());
+        } else {
+            deleteWorldScope(connection, request.scope().server(), request.scope().world());
+        }
+        cleanupDeleteScope(connection, request.scope());
+    }
+
+    private void deleteSelectedRows(final Connection connection, final StorageDeleteRequest request) throws SQLException {
+        final DeleteSelection selection = selectDeleteRows(connection, request);
+        deleteRowsById(connection, timeTableName, selection.sessionIds());
+        deleteRowsById(connection, adjustmentTableName, selection.adjustmentIds());
+    }
+
+    private DeleteSelection selectDeleteRows(final Connection connection, final StorageDeleteRequest request)
+            throws SQLException {
+        final Set<Long> playerIds = new HashSet<>();
+        final List<Long> sessionIds = selectDeleteSessionRows(connection, request, playerIds);
+        final List<Long> adjustmentIds = selectDeleteAdjustmentRows(connection, request, playerIds);
+        return new DeleteSelection(sessionIds, adjustmentIds, playerIds);
+    }
+
+    private List<Long> selectDeleteSessionRows(final Connection connection,
+                                               final StorageDeleteRequest request,
+                                               final Set<Long> playerIds)
+            throws SQLException {
+        final StorageMaintenanceScope scope = request.scope();
+        final boolean serverScope = scope.type() == StorageMaintenanceScope.Type.SERVER;
+        final StringBuilder sql = new StringBuilder("SELECT t.`id`, t.`player_id`, t.`join_time`, t.`leave_time` "
+                + "FROM `" + timeTableName + "` t "
+                + "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                + "WHERE s.`server` = ?");
+        if (!serverScope) {
+            sql.append(" AND w.`world` = ?");
+        }
+        request.playerUuid().ifPresent(ignored -> sql.append(" AND t.`player_id` = ?"));
+        try (PreparedStatement select = connection.prepareStatement(sql.toString())) {
+            int index = 1;
+            select.setString(index++, scope.server());
+            if (!serverScope) {
+                select.setString(index++, scope.world());
+            }
+            if (request.playerUuid().isPresent()) {
+                final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid().get());
+                if (playerId.isEmpty()) {
+                    return List.of();
+                }
+                select.setLong(index, playerId.get());
+            }
+            return readDeleteSessionRows(select, request.timeRange(), playerIds);
+        }
+    }
+
+    private List<Long> readDeleteSessionRows(final PreparedStatement select,
+                                             final Optional<TimeRange> range,
+                                             final Set<Long> playerIds)
+            throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        try (ResultSet result = select.executeQuery()) {
+            while (result.next()) {
+                if (range.isEmpty() || isFullyInside(result, range.get())) {
+                    ids.add(result.getLong("id"));
+                    playerIds.add(result.getLong("player_id"));
+                }
+            }
+        }
+        return ids;
+    }
+
+    private List<Long> selectDeleteAdjustmentRows(final Connection connection,
+                                                  final StorageDeleteRequest request,
+                                                  final Set<Long> playerIds)
+            throws SQLException {
+        final StorageMaintenanceScope scope = request.scope();
+        final boolean serverScope = scope.type() == StorageMaintenanceScope.Type.SERVER;
+        final StringBuilder sql = new StringBuilder("SELECT a.`id`, a.`player_id`, a.`created_at` "
+                + "FROM `" + adjustmentTableName + "` a "
+                + "LEFT JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                + "LEFT JOIN `" + serverTableName + "` ws ON ws.`id` = w.`server_id` "
+                + "LEFT JOIN `" + serverTableName + "` ss ON ss.`id` = a.`server_id` ");
+        if (serverScope) {
+            sql.append("WHERE ((a.`scope_type` = 'SERVER' AND ss.`server` = ?) "
+                    + "OR (a.`scope_type` = 'WORLD' AND ws.`server` = ?))");
+        } else {
+            sql.append("WHERE a.`scope_type` = 'WORLD' AND ws.`server` = ? AND w.`world` = ?");
+        }
+        request.playerUuid().ifPresent(ignored -> sql.append(" AND a.`player_id` = ?"));
+        try (PreparedStatement select = connection.prepareStatement(sql.toString())) {
+            int index = 1;
+            select.setString(index++, scope.server());
+            if (serverScope) {
+                select.setString(index++, scope.server());
+            } else {
+                select.setString(index++, scope.world());
+            }
+            if (request.playerUuid().isPresent()) {
+                final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid().get());
+                if (playerId.isEmpty()) {
+                    return List.of();
+                }
+                select.setLong(index, playerId.get());
+            }
+            return readDeleteAdjustmentRows(select, request.timeRange(), playerIds);
+        }
+    }
+
+    private List<Long> readDeleteAdjustmentRows(final PreparedStatement select,
+                                                final Optional<TimeRange> range,
+                                                final Set<Long> playerIds)
+            throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        try (ResultSet result = select.executeQuery()) {
+            while (result.next()) {
+                if (range.isEmpty() || range.get().contains(readInstant(result, "created_at"))) {
+                    ids.add(result.getLong("id"));
+                    playerIds.add(result.getLong("player_id"));
+                }
+            }
+        }
+        return ids;
+    }
+
+    private void deleteRowsById(final Connection connection, final String tableName, final List<Long> ids)
+            throws SQLException {
+        if (ids.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM `" + tableName + "` WHERE `id` = ?")) {
+            for (final long id : ids) {
+                delete.setLong(1, id);
+                delete.addBatch();
+            }
+            delete.executeBatch();
+        }
+    }
+
+    private void cleanupDeleteScope(final Connection connection, final StorageMaintenanceScope scope)
+            throws SQLException {
+        if (scope.type() == StorageMaintenanceScope.Type.SERVER) {
+            final Optional<Long> serverId = serverTable.findId(connection, scope.server());
+            if (serverId.isEmpty()) {
+                return;
+            }
+            for (final long worldId : worldIdsForServer(connection, serverId.get())) {
+                deleteWorldIfUnreferenced(connection, worldId);
+            }
+            deleteServerIfUnreferenced(connection, serverId.get());
+            return;
+        }
+        final Optional<Long> worldId = worldTable.findId(connection, scope.server(), scope.world());
+        final Optional<Long> serverId = serverTable.findId(connection, scope.server());
+        if (worldId.isPresent()) {
+            deleteWorldIfUnreferenced(connection, worldId.get());
+        }
+        if (serverId.isPresent()) {
+            deleteServerIfUnreferenced(connection, serverId.get());
+        }
+    }
+
+    private List<Long> worldIdsForServer(final Connection connection, final long serverId) throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT `id` FROM `" + worldTableName + "` WHERE `server_id` = ?")) {
+            select.setLong(1, serverId);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    ids.add(result.getLong("id"));
+                }
+            }
+        }
+        return ids;
+    }
+
     private void deleteServerScope(final Connection connection, final String server) throws SQLException {
         final Optional<Long> serverId = serverTable.findId(connection, server);
         if (serverId.isEmpty()) {
@@ -1632,6 +1852,9 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     }
 
     private void deleteServerIfUnreferenced(final Connection connection, final long serverId) throws SQLException {
+        for (final long worldId : worldIdsForServer(connection, serverId)) {
+            deleteWorldIfUnreferenced(connection, worldId);
+        }
         if (singleLong(connection, "SELECT COUNT(*) FROM `" + worldTableName + "` WHERE `server_id` = ?", serverId) > 0
                 || singleLong(connection, "SELECT COUNT(*) FROM `" + adjustmentTableName + "` WHERE `server_id` = ?", serverId) > 0) {
             return;
@@ -1819,6 +2042,9 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         private boolean hasData() {
             return sessions > 0 || adjustments > 0;
         }
+    }
+
+    private record DeleteSelection(List<Long> sessionIds, List<Long> adjustmentIds, Set<Long> playerIds) {
     }
 
     private record WorldRow(long worldId, String world) {

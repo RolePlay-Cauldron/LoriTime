@@ -14,7 +14,6 @@ import com.jannik_kuehn.common.platform.CommonCommand;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
 import com.jannik_kuehn.common.platform.CommonServer;
-import com.jannik_kuehn.common.storage.model.SessionContextDefaults;
 import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.util.List;
@@ -107,7 +106,7 @@ public class LoriTimeCommand implements CommonCommand {
                     targetPlayer = loriTimePlugin.getPlayerConverter().getOnlinePlayer(playerSender.getUniqueId());
                 }
 
-                final Optional<TimeScope> resolvedScope = resolveScope(request, targetPlayer.getUniqueId());
+                final Optional<TimeScope> resolvedScope = resolveScope(sender, request);
                 if (resolvedScope.isEmpty()) {
                     CommandMessages.send(localization, loriTimePlugin.getLanguageSelector(), sender,
                             "message.command.loritime.usage");
@@ -175,22 +174,23 @@ public class LoriTimeCommand implements CommonCommand {
         return new LoriTimeLookupCompletions(loriTimePlugin).suggest(source, args);
     }
 
-    private Optional<TimeScope> resolveScope(final LookupRequest request, final UUID targetUniqueId) {
+    private Optional<TimeScope> resolveScope(final CommonSender sender, final LookupRequest request) {
         if (!request.hasWorld()) {
             return Optional.of(request.hasServer() ? TimeScope.server(request.serverName()) : TimeScope.GLOBAL);
         }
         if (request.hasServer()) {
             return Optional.of(TimeScope.world(request.serverName(), request.worldName()));
         }
-        return resolveDefaultServer(targetUniqueId).map(serverName -> TimeScope.world(serverName, request.worldName()));
+        return resolveDefaultServer(sender).map(serverName -> TimeScope.world(serverName, request.worldName()));
     }
 
-    private Optional<String> resolveDefaultServer(final UUID targetUniqueId) {
+    private Optional<String> resolveDefaultServer(final CommonSender sender) {
         final CommonServer server = loriTimePlugin.getServer();
-        if (server.isProxy()) {
-            return server.getCurrentServer(targetUniqueId);
+        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
+            return server.getCurrentServer(playerSender.getUniqueId())
+                    .or(server::getLocalServerName);
         }
-        return server.getLocalServerName().or(() -> Optional.of(SessionContextDefaults.SERVER));
+        return Optional.empty();
     }
 
     private String noTimeMessage(final String targetName, final TimeScope scope, final LookupRequest request) {

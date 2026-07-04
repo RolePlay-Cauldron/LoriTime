@@ -401,7 +401,8 @@ public class LoriTimePlugin {
         }
         scheduler.runAsyncOnce(() -> {
             try {
-                scopeSuggestionCache.replaceStoredNames(getStorage().getKnownServerNames(), getStorage().getKnownWorldNames());
+                scopeSuggestionCache.replaceStoredNames(getStorage().getKnownServerNames(),
+                        getStorage().getKnownWorldNamesByServer());
             } catch (final StorageException ex) {
                 log.warn("Could not refresh scope suggestions.", ex);
             }

@@ -9,12 +9,13 @@ import com.jannik_kuehn.common.command.core.CommandScopes;
 import com.jannik_kuehn.common.command.core.PlayerNameCompletions;
 import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
 import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.scheduler.PluginTask;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
-import com.jannik_kuehn.common.storage.model.SessionContextDefaults;
+import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceResult;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceScope;
@@ -43,7 +44,8 @@ import java.util.function.Consumer;
  */
 @SuppressWarnings({"PMD.TooManyMethods", "PMD.CouplingBetweenObjects",
         "PMD.CyclomaticComplexity", "PMD.AvoidCatchingGenericException", "PMD.CognitiveComplexity",
-        "PMD.NcssCount", "PMD.NPathComplexity", "PMD.AvoidLiteralsInIfCondition", "PMD.PrematureDeclaration"})
+        "PMD.NcssCount", "PMD.NPathComplexity", "PMD.AvoidLiteralsInIfCondition", "PMD.PrematureDeclaration",
+        "PMD.AvoidDuplicateLiterals"})
 final class LoriTimeAdminActions {
 
     /**
@@ -242,6 +244,64 @@ final class LoriTimeAdminActions {
         }
     }
 
+    /**
+     * Previews a scoped storage history delete.
+     *
+     * @param sender command sender
+     * @param args   subcommand arguments
+     */
+    /* default */ void deleteHistory(final CommonSender sender, final String... args) {
+        final Optional<String> defaultServer = resolveDefaultServer(sender);
+        final ParsedDeleteHistory parsed = parseDeleteHistory(defaultServer, args);
+        if (parsed == null) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.deleteHistory.usage");
+            return;
+        }
+        if (!plugin.ownsCanonicalStorage()) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.storageMaintenance.unsupported");
+            return;
+        }
+        final Optional<AdminStorageMaintenance> optionalMaintenance = plugin.getAdminStorageMaintenance();
+        if (optionalMaintenance.isEmpty()) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.storageMaintenance.unsupported");
+            return;
+        }
+        try {
+            final StorageDeleteRequest request = parsed.toRequest(resolvePlayer(sender, parsed), defaultServer);
+            if (request == null) {
+                return;
+            }
+            final AdminStorageMaintenance maintenance = optionalMaintenance.get();
+            final StorageMaintenancePreview preview = maintenance.previewDelete(request);
+            queuePendingAction(sender, "deleteHistory", () -> {
+                final StorageMaintenanceResult result = maintenance.applyDelete(request, preview.confirmation());
+                sendDeleteHistorySuccess(sender, result);
+            });
+            sendDeleteHistoryPreview(sender, preview);
+        } catch (final StorageException | RuntimeException ex) {
+            log.error("Storage deleteHistory failed.", ex);
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.deleteHistory.failure");
+        }
+    }
+
+    private Optional<UUID> resolvePlayer(final CommonSender sender, final ParsedDeleteHistory parsed)
+            throws StorageException {
+        if (!parsed.hasPlayer()) {
+            return Optional.empty();
+        }
+        final Optional<UUID> optionalPlayer = plugin.getStorage().getUuid(parsed.playerName());
+        if (optionalPlayer.isEmpty()) {
+            sender.sendMessage(localization.formatTextComponent(localization
+                    .getRawMessage("message.command.loritimeadmin.missingUuid")
+                    .replace("[player]", parsed.playerName())));
+        }
+        return optionalPlayer;
+    }
+
     private void previewPlayerTransfer(final CommonSender sender,
                                        final ParsedTransfer parsed,
                                        final AdminStorageMaintenance maintenance) throws StorageException {
@@ -253,7 +313,7 @@ final class LoriTimeAdminActions {
             return;
         }
         final PlayerStorageTransferRequest request = parsed.toPlayerRequest(optionalPlayer.get(),
-                resolveDefaultServer(optionalPlayer.get()));
+                resolveDefaultServer(sender));
         if (request == null) {
             CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
                     "message.command.loritimeadmin.transfer.usage");
@@ -270,7 +330,7 @@ final class LoriTimeAdminActions {
     private void previewAllPlayerTransfer(final CommonSender sender,
                                           final ParsedTransfer parsed,
                                           final AdminStorageMaintenance maintenance) throws StorageException {
-        final StorageTransferRequest request = parsed.toStorageRequest(resolveDefaultServer());
+        final StorageTransferRequest request = parsed.toStorageRequest(resolveDefaultServer(sender));
         if (request == null) {
             CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
                     "message.command.loritimeadmin.transfer.usage");
@@ -334,28 +394,28 @@ final class LoriTimeAdminActions {
             return PlayerNameCompletions.suggest(plugin, argument);
         }
         if (lowerArgument.startsWith(CommandScopes.SERVER_PREFIX)) {
-            return prefixedScopeValues(CommandScopes.SERVER_PREFIX, argument, true);
+            return prefixedScopeValues(sender, CommandScopes.SERVER_PREFIX, argument, true, false, args);
         }
         if (lowerArgument.startsWith(CommandScopes.SHORT_SERVER_PREFIX)) {
-            return prefixedScopeValues(CommandScopes.SHORT_SERVER_PREFIX, argument, true);
+            return prefixedScopeValues(sender, CommandScopes.SHORT_SERVER_PREFIX, argument, true, false, args);
         }
         if (lowerArgument.startsWith(CommandScopes.WORLD_PREFIX)) {
-            return prefixedScopeValues(CommandScopes.WORLD_PREFIX, argument, false);
+            return prefixedScopeValues(sender, CommandScopes.WORLD_PREFIX, argument, false, false, args);
         }
         if (lowerArgument.startsWith(CommandScopes.SHORT_WORLD_PREFIX)) {
-            return prefixedScopeValues(CommandScopes.SHORT_WORLD_PREFIX, argument, false);
+            return prefixedScopeValues(sender, CommandScopes.SHORT_WORLD_PREFIX, argument, false, false, args);
         }
         if (lowerArgument.startsWith(TARGET_SERVER_PREFIX)) {
-            return prefixedScopeValues(TARGET_SERVER_PREFIX, argument, true);
+            return prefixedScopeValues(sender, TARGET_SERVER_PREFIX, argument, true, true, args);
         }
         if (lowerArgument.startsWith(SHORT_TARGET_SERVER_PREFIX)) {
-            return prefixedScopeValues(SHORT_TARGET_SERVER_PREFIX, argument, true);
+            return prefixedScopeValues(sender, SHORT_TARGET_SERVER_PREFIX, argument, true, true, args);
         }
         if (lowerArgument.startsWith(TARGET_WORLD_PREFIX)) {
-            return prefixedScopeValues(TARGET_WORLD_PREFIX, argument, false);
+            return prefixedScopeValues(sender, TARGET_WORLD_PREFIX, argument, false, true, args);
         }
         if (lowerArgument.startsWith(SHORT_TARGET_WORLD_PREFIX)) {
-            return prefixedScopeValues(SHORT_TARGET_WORLD_PREFIX, argument, false);
+            return prefixedScopeValues(sender, SHORT_TARGET_WORLD_PREFIX, argument, false, true, args);
         }
         if (lowerArgument.startsWith(CommandScopes.TIME_PREFIX) || lowerArgument.startsWith(CommandScopes.SHORT_TIME_PREFIX)) {
             return List.of();
@@ -368,6 +428,106 @@ final class LoriTimeAdminActions {
         addMissingFlagSuggestion(suggestions, previousArgs, TARGET_WORLD_PREFIX);
         addMissingFlagSuggestion(suggestions, previousArgs, CommandScopes.TIME_PREFIX);
         return CommandCompletions.startsWith(suggestions, argument);
+    }
+
+    /**
+     * Completes deleteHistory command arguments.
+     *
+     * @param sender command sender
+     * @param args   current deleteHistory arguments
+     * @return completions
+     */
+    /* default */ List<String> completeDeleteHistory(final CommonSender sender, final String... args) {
+        if (!sender.hasPermission("loritime.admin")) {
+            return List.of();
+        }
+        final String argument = args.length == 0 ? "" : args[args.length - 1];
+        final String lowerArgument = argument.toLowerCase(Locale.ROOT);
+        if (args.length <= 1 && !argument.contains(":")) {
+            return PlayerNameCompletions.suggest(plugin, argument);
+        }
+        if (lowerArgument.startsWith(CommandScopes.SERVER_PREFIX)) {
+            return prefixedScopeValues(sender, CommandScopes.SERVER_PREFIX, argument, true, false, args);
+        }
+        if (lowerArgument.startsWith(CommandScopes.SHORT_SERVER_PREFIX)) {
+            return prefixedScopeValues(sender, CommandScopes.SHORT_SERVER_PREFIX, argument, true, false, args);
+        }
+        if (lowerArgument.startsWith(CommandScopes.WORLD_PREFIX)) {
+            return prefixedScopeValues(sender, CommandScopes.WORLD_PREFIX, argument, false, false, args);
+        }
+        if (lowerArgument.startsWith(CommandScopes.SHORT_WORLD_PREFIX)) {
+            return prefixedScopeValues(sender, CommandScopes.SHORT_WORLD_PREFIX, argument, false, false, args);
+        }
+        if (lowerArgument.startsWith(CommandScopes.TIME_PREFIX) || lowerArgument.startsWith(CommandScopes.SHORT_TIME_PREFIX)) {
+            return List.of();
+        }
+        final List<String> suggestions = new ArrayList<>();
+        final List<String> previousArgs = args.length == 0 ? List.of() : Arrays.asList(Arrays.copyOf(args, args.length - 1));
+        addMissingFlagSuggestion(suggestions, previousArgs, CommandScopes.SERVER_PREFIX);
+        addMissingFlagSuggestion(suggestions, previousArgs, CommandScopes.WORLD_PREFIX);
+        addMissingFlagSuggestion(suggestions, previousArgs, CommandScopes.TIME_PREFIX);
+        return CommandCompletions.startsWith(suggestions, argument);
+    }
+
+    private ParsedDeleteHistory parseDeleteHistory(final Optional<String> defaultServer, final String... args) {
+        if (args.length < 1) {
+            return null;
+        }
+        String playerName = null;
+        String sourceServer = null;
+        String sourceWorld = null;
+        String timeRangeInput = null;
+        for (final String argument : args) {
+            final String lowerArgument = argument.toLowerCase(Locale.ROOT);
+            if (CONFIRM_TOKEN.equalsIgnoreCase(argument)) {
+                return null;
+            } else if (lowerArgument.startsWith(CommandScopes.SERVER_PREFIX)) {
+                sourceServer = assignOnce(sourceServer, argument, CommandScopes.SERVER_PREFIX.length());
+                if (sourceServer == null) {
+                    return null;
+                }
+            } else if (lowerArgument.startsWith(CommandScopes.SHORT_SERVER_PREFIX)) {
+                sourceServer = assignOnce(sourceServer, argument, CommandScopes.SHORT_SERVER_PREFIX.length());
+                if (sourceServer == null) {
+                    return null;
+                }
+            } else if (lowerArgument.startsWith(CommandScopes.WORLD_PREFIX)) {
+                sourceWorld = assignOnce(sourceWorld, argument, CommandScopes.WORLD_PREFIX.length());
+                if (sourceWorld == null) {
+                    return null;
+                }
+            } else if (lowerArgument.startsWith(CommandScopes.SHORT_WORLD_PREFIX)) {
+                sourceWorld = assignOnce(sourceWorld, argument, CommandScopes.SHORT_WORLD_PREFIX.length());
+                if (sourceWorld == null) {
+                    return null;
+                }
+            } else if (lowerArgument.startsWith(CommandScopes.TIME_PREFIX)) {
+                timeRangeInput = assignOnce(timeRangeInput, argument, CommandScopes.TIME_PREFIX.length());
+                if (timeRangeInput == null) {
+                    return null;
+                }
+            } else if (lowerArgument.startsWith(CommandScopes.SHORT_TIME_PREFIX)) {
+                timeRangeInput = assignOnce(timeRangeInput, argument, CommandScopes.SHORT_TIME_PREFIX.length());
+                if (timeRangeInput == null) {
+                    return null;
+                }
+            } else if (!argument.contains(":") && playerName == null) {
+                playerName = argument;
+            } else {
+                return null;
+            }
+        }
+        if (sourceServer == null && defaultServer.isEmpty()) {
+            return null;
+        }
+        final Optional<TimeRange> timeRange = timeRangeInput == null
+                ? Optional.empty()
+                : parseTimeRange(timeRangeInput);
+        if (timeRangeInput != null && timeRange.isEmpty()) {
+            return null;
+        }
+        return new ParsedDeleteHistory(playerName, sourceServer, sourceWorld,
+                timeRange, Optional.ofNullable(timeRangeInput));
     }
 
     private ParsedTransfer parseTransfer(final String... args) {
@@ -464,20 +624,13 @@ final class LoriTimeAdminActions {
                 timeRange, Optional.ofNullable(timeRangeInput), false);
     }
 
-    private Optional<String> resolveDefaultServer(final UUID targetUniqueId) {
+    private Optional<String> resolveDefaultServer(final CommonSender sender) {
         final CommonServer server = plugin.getServer();
-        if (server.isProxy()) {
-            return server.getCurrentServer(targetUniqueId);
+        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
+            return server.getCurrentServer(playerSender.getUniqueId())
+                    .or(server::getLocalServerName);
         }
-        return server.getLocalServerName().or(() -> Optional.of(SessionContextDefaults.SERVER));
-    }
-
-    private Optional<String> resolveDefaultServer() {
-        final CommonServer server = plugin.getServer();
-        if (server.isProxy()) {
-            return server.getLocalServerName();
-        }
-        return server.getLocalServerName().or(() -> Optional.of(SessionContextDefaults.SERVER));
+        return Optional.empty();
     }
 
     private String assignOnce(final String current, final String argument, final int prefixLength) {
@@ -542,6 +695,31 @@ final class LoriTimeAdminActions {
                 .replace("[players]", Long.toString(result.affectedPlayers()))));
     }
 
+    private void sendDeleteHistoryPreview(final CommonSender sender, final StorageMaintenancePreview preview) {
+        final Component previewMessage = localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.deleteHistory.preview")
+                .replace("[player]", preview.playerName()
+                        .orElse(preview.playerUuid().map(UUID::toString).orElse("all players")))
+                .replace("[scope]", preview.deleteScope() == null ? "?" : scopeLabel(preview.deleteScope()))
+                .replace("[sessions]", Long.toString(preview.affectedSessions()))
+                .replace("[adjustments]", Long.toString(preview.affectedAdjustments()))
+                .replace("[players]", Long.toString(preview.affectedPlayers()))
+                .replace("[range]", preview.timeRangeInput().orElse("all")));
+        sender.sendMessage(previewMessage.append(Component.text(" [Confirm]")
+                .clickEvent(ClickEvent.suggestCommand(CONFIRM_COMMAND))
+                .hoverEvent(HoverEvent.showText(Component.text("Suggest " + CONFIRM_COMMAND)))));
+        sender.sendMessage(localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.deleteHistory.warning")));
+    }
+
+    private void sendDeleteHistorySuccess(final CommonSender sender, final StorageMaintenanceResult result) {
+        sender.sendMessage(localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.deleteHistory.success")
+                .replace("[sessions]", Long.toString(result.affectedSessions()))
+                .replace("[adjustments]", Long.toString(result.affectedAdjustments()))
+                .replace("[players]", Long.toString(result.affectedPlayers()))));
+    }
+
     private String sourceLabel(final StorageMaintenancePreview preview) {
         return preview.mappings().isEmpty() ? "?" : scopeLabel(preview.mappings().get(0).source());
     }
@@ -558,13 +736,58 @@ final class LoriTimeAdminActions {
         };
     }
 
-    private List<String> prefixedScopeValues(final String prefix, final String argument, final boolean server) {
+    private List<String> prefixedScopeValues(final CommonSender sender,
+                                             final String prefix,
+                                             final String argument,
+                                             final boolean server,
+                                             final boolean target,
+                                             final String... args) {
         final String valuePrefix = argument.substring(prefix.length());
         final List<String> values = server
                 ? plugin.getScopeSuggestionCache().suggestServers(plugin.getServer().getLiveServerNames(), valuePrefix)
-                : plugin.getScopeSuggestionCache().suggestWorlds(plugin.getServer().getLiveWorldNames(Optional.empty(),
-                Optional.empty()), valuePrefix);
+                : prefixedWorldValues(sender, valuePrefix, target, args);
         return values.stream().map(value -> prefix + value).toList();
+    }
+
+    private List<String> prefixedWorldValues(final CommonSender sender,
+                                             final String valuePrefix,
+                                             final boolean target,
+                                             final String... args) {
+        final Optional<String> serverName = resolveCompletionServer(sender, target, args);
+        if (serverName.isEmpty()) {
+            return List.of();
+        }
+        final Optional<UUID> sourceUniqueId = sender instanceof CommonPlayerSender playerSender
+                ? Optional.ofNullable(playerSender.getUniqueId())
+                : Optional.empty();
+        return plugin.getScopeSuggestionCache().suggestWorlds(serverName.get(),
+                plugin.getServer().getLiveWorldNames(serverName, sourceUniqueId), valuePrefix);
+    }
+
+    private Optional<String> resolveCompletionServer(final CommonSender sender,
+                                                     final boolean target,
+                                                     final String... args) {
+        final Optional<String> explicitServer = target
+                ? findFlagValue(args, TARGET_SERVER_PREFIX, SHORT_TARGET_SERVER_PREFIX)
+                        .or(() -> findFlagValue(args, CommandScopes.SERVER_PREFIX, CommandScopes.SHORT_SERVER_PREFIX))
+                : findFlagValue(args, CommandScopes.SERVER_PREFIX, CommandScopes.SHORT_SERVER_PREFIX);
+        if (explicitServer.isPresent()) {
+            return explicitServer;
+        }
+        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
+            return plugin.getServer().getCurrentServer(playerSender.getUniqueId())
+                    .or(plugin.getServer()::getLocalServerName);
+        }
+        return plugin.getServer().getLocalServerName();
+    }
+
+    private Optional<String> findFlagValue(final String[] args, final String longPrefix, final String shortPrefix) {
+        return Arrays.stream(args)
+                .filter(argument -> argument.regionMatches(true, 0, longPrefix, 0, longPrefix.length())
+                        || argument.regionMatches(true, 0, shortPrefix, 0, shortPrefix.length()))
+                .filter(argument -> argument.length() > argument.indexOf(':') + 1)
+                .map(argument -> argument.substring(argument.indexOf(':') + 1))
+                .findFirst();
     }
 
     private void addMissingFlagSuggestion(final List<String> suggestions,
@@ -735,6 +958,36 @@ final class LoriTimeAdminActions {
                 return StorageMaintenanceScope.world(server, world);
             }
             return defaultServer.map(resolvedServer -> StorageMaintenanceScope.world(resolvedServer, world)).orElse(null);
+        }
+    }
+
+    private record ParsedDeleteHistory(String playerName,
+                                       String sourceServer,
+                                       String sourceWorld,
+                                       Optional<TimeRange> timeRange,
+                                       Optional<String> timeRangeInput) {
+
+        private boolean hasPlayer() {
+            return playerName != null;
+        }
+
+        private StorageDeleteRequest toRequest(final Optional<UUID> playerUuid,
+                                               final Optional<String> defaultServer) {
+            if (hasPlayer() && playerUuid.isEmpty()) {
+                return null;
+            }
+            final String resolvedServer = sourceServer == null ? defaultServer.orElse(null) : sourceServer;
+            if (resolvedServer == null) {
+                return null;
+            }
+            final StorageMaintenanceScope scope = sourceWorld == null
+                    ? StorageMaintenanceScope.server(resolvedServer)
+                    : StorageMaintenanceScope.world(resolvedServer, sourceWorld);
+            if (hasPlayer()) {
+                return StorageDeleteRequest.player(scope, playerUuid.get(), Optional.of(playerName),
+                        timeRange, timeRangeInput);
+            }
+            return StorageDeleteRequest.allPlayers(scope, timeRange, timeRangeInput);
         }
     }
 

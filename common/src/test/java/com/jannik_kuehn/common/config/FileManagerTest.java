@@ -41,6 +41,8 @@ class FileManagerTest {
                 "Expected current-schema message to be preserved");
         assertTrue(configuration.containsKey("messages.message.command.loritimeadmin.transfer.warning"),
                 "Expected localization migration to add transfer warning");
+        assertTrue(configuration.containsKey("messages.message.command.loritimeadmin.deleteHistory.warning"),
+                "Expected localization migration to add deleteHistory warning");
     }
 
     @Test

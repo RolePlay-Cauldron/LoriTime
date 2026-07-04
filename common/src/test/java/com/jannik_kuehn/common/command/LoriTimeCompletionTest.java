@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -120,7 +121,8 @@ class LoriTimeCompletionTest {
     @Test
     void modifyTabCompletionUsesCachedServerCandidatesForShortFlagsWithoutStorageLookup() throws StorageException {
         final CompletionContext context = new CompletionContext();
-        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"),
+                Map.of("survival", Set.of("world", "world_nether")));
         when(context.source.hasPermission("loritime.admin")).thenReturn(true);
         when(context.server.getLiveServerNames()).thenReturn(List.of());
 
@@ -136,7 +138,8 @@ class LoriTimeCompletionTest {
     @Test
     void modifyTabCompletionUsesCachedWorldCandidatesForShortFlagsWithoutStorageLookup() throws StorageException {
         final CompletionContext context = new CompletionContext();
-        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"),
+                Map.of("survival", Set.of("world", "world_nether")));
         when(context.source.hasPermission("loritime.admin")).thenReturn(true);
         when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty())).thenReturn(List.of());
 
@@ -226,7 +229,8 @@ class LoriTimeCompletionTest {
     @Test
     void loriTimeTabCompletionUsesCachedServerCandidatesForShortFlags() throws StorageException {
         final CompletionContext context = new CompletionContext();
-        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"),
+                Map.of("survival", Set.of("world", "world_nether")));
         when(context.source.hasPermission("loritime.see.server")).thenReturn(true);
         when(context.server.getLiveServerNames()).thenReturn(List.of());
 
@@ -240,7 +244,8 @@ class LoriTimeCompletionTest {
     @Test
     void loriTimeTabCompletionUsesCachedWorldCandidatesForShortFlags() throws StorageException {
         final CompletionContext context = new CompletionContext();
-        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"), Set.of("world", "world_nether"));
+        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"),
+                Map.of("survival", Set.of("world", "world_nether")));
         when(context.source.hasPermission("loritime.see.world")).thenReturn(true);
         when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty())).thenReturn(List.of());
 
@@ -436,10 +441,13 @@ class LoriTimeCompletionTest {
     @Test
     void adminTransferCompletionUsesLiveAndCachedScopeCandidatesWithoutStorageLookup() throws StorageException {
         final CompletionContext context = new CompletionContext();
-        context.scopeCache.replaceStoredNames(Set.of("cached-survival"), Set.of("cached-world"));
+        context.scopeCache.replaceStoredNames(Set.of("cached-survival"),
+                Map.of("cached-survival", Set.of("cached-world")));
         when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.source.getUniqueId()).thenReturn(PLAYER_ID);
         when(context.server.getLiveServerNames()).thenReturn(List.of("survival", "creative"));
-        when(context.server.getLiveWorldNames(Optional.empty(), Optional.empty())).thenReturn(List.of());
+        when(context.server.getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("cached-survival"));
+        when(context.server.getLiveWorldNames(Optional.of("cached-survival"), Optional.of(PLAYER_ID))).thenReturn(List.of());
 
         final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
 
@@ -477,6 +485,63 @@ class LoriTimeCompletionTest {
     }
 
     @Test
+    void adminDeleteHistoryCompletionUsesCachedPlayerAndScopeCandidatesWithoutStorageLookup() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        context.scopeCache.replaceStoredNames(Set.of("cached-survival"),
+                Map.of("survival", Set.of("cached-world")));
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin.getKnownPlayerNames()).thenReturn(Set.of("Lorias_"));
+        when(context.server.getOnlinePlayers()).thenReturn(new CommonPlayerSender[0]);
+        when(context.server.getLiveServerNames()).thenReturn(List.of("survival"));
+        when(context.server.getLiveWorldNames(Optional.of("survival"), Optional.empty())).thenReturn(List.of());
+
+        final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("Lorias_"), command.handleTabComplete(context.source, "deleteHistory", "L"),
+                "Expected deleteHistory player completion from cache");
+        assertEquals(List.of("server:survival"),
+                command.handleTabComplete(context.source, "deleteHistory", "Lorias_", "server:su"),
+                "Expected deleteHistory server values from live runtime context");
+        assertEquals(List.of("world:cached-world"),
+                command.handleTabComplete(context.source, "deleteHistory", "Lorias_", "server:survival", "world:cached"),
+                "Expected deleteHistory world values from cached scope names");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
+    void adminDeleteHistoryCompletionSuggestsMissingFlags() {
+        final CompletionContext context = new CompletionContext();
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+
+        final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("world:"),
+                command.handleTabComplete(context.source, "deleteHistory", "Lorias_", "server:survival", "w"),
+                "Expected remaining deleteHistory flags matching the typed prefix");
+        assertEquals(List.of(),
+                command.handleTabComplete(context.source, "deleteHistory", "Lorias_", "time:3d", "time"),
+                "Expected duplicate time flag to stay unsuggested");
+    }
+
+    @Test
+    void adminDeleteHistoryWorldCompletionDefaultsToExecutorCurrentServer() throws StorageException {
+        final CompletionContext context = new CompletionContext();
+        context.scopeCache.replaceStoredNames(Set.of("survival", "creative"),
+                Map.of("survival", Set.of("world"), "creative", Set.of("world", "plots")));
+        when(context.source.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.source.getUniqueId()).thenReturn(PLAYER_ID);
+        when(context.server.getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("creative"));
+        when(context.server.getLiveWorldNames(Optional.of("creative"), Optional.of(PLAYER_ID))).thenReturn(List.of());
+
+        final LoriTimeAdminCommand command = new LoriTimeAdminCommand(context.plugin, context.localization);
+
+        assertEquals(List.of("world:world", "world:plots"),
+                command.handleTabComplete(context.source, "deleteHistory", "world:"),
+                "Expected world completion to use the executor's current server when no server flag is present");
+        verifyNoSuggestionStorageLookup(context.storage);
+    }
+
+    @Test
     void adminTabCompletionSuggestsConfirmSubcommand() {
         final CompletionContext context = new CompletionContext();
         when(context.source.hasPermission("loritime.admin")).thenReturn(true);
@@ -507,6 +572,7 @@ class LoriTimeCompletionTest {
         verify(storage, never()).getRecentPlayerIdentities(anyLong());
         verify(storage, never()).getKnownServerNames();
         verify(storage, never()).getKnownWorldNames();
+        verify(storage, never()).getKnownWorldNamesByServer();
     }
 
     private static final class CompletionContext {
