@@ -113,7 +113,7 @@ class LocalizationTest {
         final File languageFolder = new File(dataFolder, "language");
         Files.createDirectories(languageFolder.toPath());
         Files.writeString(new File(languageFolder, locale + ".yml").toPath(), """
-                schema_version: 1
+                schema_version: 2
                 locale: '%s'
                 prefix: '<gray>LoriTime '
                 messages:
@@ -127,7 +127,7 @@ class LocalizationTest {
         final File languageFolder = new File(dataFolder, "language");
         Files.createDirectories(languageFolder.toPath());
         Files.writeString(new File(languageFolder, locale + ".yml").toPath(), """
-                schema_version: 1
+                schema_version: 2
                 locale: '%s'
                 prefix: '<gray>LoriTime '
                 messages:

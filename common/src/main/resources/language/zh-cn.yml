@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 locale: 'zh-cn'
 prefix: '<#A4A4A4>[<#50CBAB>LoriTime<#A4A4A4>] '
 messages:
@@ -76,6 +76,7 @@ messages:
         transfer:
           usage: '<#A4A4A4>Use <red>/loritimeadmin transfer [player] server:<source> [world:<source>] to-server:<target> [to-world:<target>] [time:<range>] <#A4A4A4>to preview moving scoped data. Omit player to move all players.'
           preview: '<#A4A4A4>Transfer preview for <#50CBAB>[player]<#A4A4A4>: <#50CBAB>[source] <#A4A4A4>to <#50CBAB>[target]<#A4A4A4>, range <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>sessions, <#50CBAB>[adjustments] <#A4A4A4>adjustments, <#50CBAB>[players] <#A4A4A4>players, merge <#50CBAB>[merge]<#A4A4A4>. Use <red>/lta confirm <#A4A4A4>within 15 seconds to apply.'
+          warning: '<#FF3232>WARNING: This transfer rewrites stored history and cannot be reverted by LoriTime. Create and verify a backup before running /lta confirm.'
           success: '<#1AFA29>Transfer completed: <#50CBAB>[sessions] <#1AFA29>sessions, <#50CBAB>[adjustments] <#1AFA29>adjustments, <#50CBAB>[players] <#1AFA29>players.'
           failure: '<#FF3232>Storage transfer failed.'
         confirm:

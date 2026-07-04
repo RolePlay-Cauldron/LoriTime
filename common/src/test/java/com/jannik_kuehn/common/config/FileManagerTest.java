@@ -19,7 +19,7 @@ class FileManagerTest {
     private File dataFolder;
 
     @Test
-    void languageFileMigratesFromRootToLanguageFolderWithoutLegacySchemaConversion() throws Exception {
+    void languageFileMigratesFromRootToLanguageFolderAndCurrentSchema() throws Exception {
         final File rootLanguage = new File(dataFolder, "en-us.yml");
         Files.writeString(rootLanguage.toPath(), """
                 schema_version: 1
@@ -35,10 +35,12 @@ class FileManagerTest {
 
         assertFalse(rootLanguage.exists(), "Expected root language file to be moved");
         assertEquals(new File(dataFolder, "language/en-us.yml"), languageFile, "Expected canonical language path");
-        assertEquals(1, configuration.getInt("schema_version"), "Expected current localization schema");
+        assertEquals(2, configuration.getInt("schema_version"), "Expected current localization schema");
         assertEquals("en-us", configuration.getString("locale"), "Expected locale metadata to be preserved");
         assertEquals("custom permission", configuration.getString("messages.message.noPermission"),
                 "Expected current-schema message to be preserved");
+        assertTrue(configuration.containsKey("messages.message.command.loritimeadmin.transfer.warning"),
+                "Expected localization migration to add transfer warning");
     }
 
     @Test
@@ -58,7 +60,7 @@ class FileManagerTest {
         fileManager.ensureBundledFallbackLanguage();
 
         final Configuration configuration = fileManager.getConfiguration(new File(dataFolder, "language/en-us.yml"));
-        assertEquals(1, configuration.getInt("schema_version"), "Expected current localization schema");
+        assertEquals(2, configuration.getInt("schema_version"), "Expected current localization schema");
         assertEquals("en-us", configuration.getString("locale"), "Expected bundled locale metadata");
         assertTrue(configuration.containsKey("messages.message.noPermission"), "Expected messages section");
     }
@@ -71,7 +73,7 @@ class FileManagerTest {
         final Configuration configuration = fileManager.getConfiguration(languageFile);
 
         assertEquals(new File(dataFolder, "language/de-de.yml"), languageFile, "Expected canonical bundled language path");
-        assertEquals(1, configuration.getInt("schema_version"), "Expected current localization schema");
+        assertEquals(2, configuration.getInt("schema_version"), "Expected current localization schema");
         assertEquals("de-de", configuration.getString("locale"), "Expected bundled locale metadata");
     }
 

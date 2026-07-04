@@ -2,6 +2,7 @@ package com.jannik_kuehn.common.command;
 
 import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.LoriTimePlugin;
+import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.command.core.CommandCompletions;
 import com.jannik_kuehn.common.command.core.CommandMessages;
 import com.jannik_kuehn.common.command.core.CommandScopes;
@@ -106,6 +107,11 @@ final class LoriTimeAdminActions {
     private final WrappedLogger log;
 
     /**
+     * Pending confirmation actions by sender name.
+     */
+    private final Map<String, PendingAdminAction> pendingConfirmations;
+
+    /**
      * Whether debug mode is enabled.
      */
     private boolean isDebugging;
@@ -114,11 +120,6 @@ final class LoriTimeAdminActions {
      * Task that automatically disables debug mode after a certain time.
      */
     private PluginTask autoDisableTask;
-
-    /**
-     * Pending confirmation actions by sender name.
-     */
-    private final Map<String, PendingAdminAction> pendingConfirmations;
 
     /**
      * Creates admin subcommand actions.
@@ -320,7 +321,7 @@ final class LoriTimeAdminActions {
      * Completes transfer command arguments.
      *
      * @param sender command sender
-     * @param args current transfer arguments
+     * @param args   current transfer arguments
      * @return completions
      */
     /* default */ List<String> completeTransfer(final CommonSender sender, final String... args) {
@@ -442,7 +443,7 @@ final class LoriTimeAdminActions {
         if (playerName == null && timeRangeInput != null) {
             return null;
         }
-        final Optional<com.jannik_kuehn.common.api.storage.TimeRange> timeRange = timeRangeInput == null
+        final Optional<TimeRange> timeRange = timeRangeInput == null
                 ? Optional.empty()
                 : parseTimeRange(timeRangeInput);
         if (timeRangeInput != null && timeRange.isEmpty()) {
@@ -486,7 +487,7 @@ final class LoriTimeAdminActions {
         return argument.substring(prefixLength);
     }
 
-    private Optional<com.jannik_kuehn.common.api.storage.TimeRange> parseTimeRange(final String input) {
+    private Optional<TimeRange> parseTimeRange(final String input) {
         final String[] parts = input.split("-", -1);
         if (parts.length == 1) {
             final OptionalLong duration = parsePositiveDuration(parts[0]);
@@ -508,9 +509,9 @@ final class LoriTimeAdminActions {
         return duration.isPresent() && duration.getAsLong() > 0L ? duration : OptionalLong.empty();
     }
 
-    private com.jannik_kuehn.common.api.storage.TimeRange range(final long nearSeconds, final long farSeconds) {
+    private TimeRange range(final long nearSeconds, final long farSeconds) {
         final Instant now = Instant.now(Clock.systemUTC());
-        return com.jannik_kuehn.common.api.storage.TimeRange.between(now.minusSeconds(farSeconds),
+        return TimeRange.between(now.minusSeconds(farSeconds),
                 now.minusSeconds(nearSeconds));
     }
 
@@ -529,6 +530,8 @@ final class LoriTimeAdminActions {
         sender.sendMessage(previewMessage.append(Component.text(" [Confirm]")
                 .clickEvent(ClickEvent.suggestCommand(CONFIRM_COMMAND))
                 .hoverEvent(HoverEvent.showText(Component.text("Suggest " + CONFIRM_COMMAND)))));
+        sender.sendMessage(localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.transfer.warning")));
     }
 
     private void sendTransferSuccess(final CommonSender sender, final StorageMaintenanceResult result) {
@@ -646,19 +649,32 @@ final class LoriTimeAdminActions {
         });
     }
 
+    /**
+     * Action that can be executed after a sender confirms it.
+     */
+    @FunctionalInterface
+    private interface ConfirmableAdminAction {
+        /**
+         * Runs the confirmed action.
+         *
+         * @throws StorageException when storage mutation fails
+         */
+        void run() throws StorageException;
+    }
+
     private record ParsedTransfer(String playerName,
                                   String sourceServer,
                                   String sourceWorld,
                                   String targetServer,
                                   String targetWorld,
-                                  Optional<com.jannik_kuehn.common.api.storage.TimeRange> timeRange,
+                                  Optional<TimeRange> timeRange,
                                   Optional<String> timeRangeInput,
                                   boolean confirm) {
 
         private static ParsedTransfer server(final String playerName,
                                              final String sourceServer,
                                              final String targetServer,
-                                             final Optional<com.jannik_kuehn.common.api.storage.TimeRange> timeRange,
+                                             final Optional<TimeRange> timeRange,
                                              final Optional<String> timeRangeInput,
                                              final boolean confirm) {
             return new ParsedTransfer(playerName, sourceServer, null, targetServer, null,
@@ -670,7 +686,7 @@ final class LoriTimeAdminActions {
                                             final String sourceWorld,
                                             final String targetServer,
                                             final String targetWorld,
-                                            final Optional<com.jannik_kuehn.common.api.storage.TimeRange> timeRange,
+                                            final Optional<TimeRange> timeRange,
                                             final Optional<String> timeRangeInput,
                                             final boolean confirm) {
             return new ParsedTransfer(playerName, sourceServer, sourceWorld, targetServer, targetWorld,
@@ -720,19 +736,6 @@ final class LoriTimeAdminActions {
             }
             return defaultServer.map(resolvedServer -> StorageMaintenanceScope.world(resolvedServer, world)).orElse(null);
         }
-    }
-
-    /**
-     * Action that can be executed after a sender confirms it.
-     */
-    @FunctionalInterface
-    private interface ConfirmableAdminAction {
-        /**
-         * Runs the confirmed action.
-         *
-         * @throws StorageException when storage mutation fails
-         */
-        void run() throws StorageException;
     }
 
     private record PendingAdminAction(String description,

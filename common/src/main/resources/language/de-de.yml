@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 locale: 'de-de'
 prefix: '<#A4A4A4>[<#50CBAB>LoriTime<#A4A4A4>] '
 messages:
@@ -76,6 +76,7 @@ messages:
         transfer:
           usage: '<#A4A4A4>Benutze <red>/loritimeadmin transfer [player] server:<source> [world:<source>] to-server:<target> [to-world:<target>] [time:<range>] <#A4A4A4>um das Verschieben von Daten vorzubereiten. Ohne Spieler werden alle Spieler verschoben.'
           preview: '<#A4A4A4>Transfer-Vorschau fuer <#50CBAB>[player]<#A4A4A4>: <#50CBAB>[source] <#A4A4A4>nach <#50CBAB>[target]<#A4A4A4>, Zeitraum <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>Sitzungen, <#50CBAB>[adjustments] <#A4A4A4>Anpassungen, <#50CBAB>[players] <#A4A4A4>Spieler, Merge <#50CBAB>[merge]<#A4A4A4>. Nutze <red>/lta confirm <#A4A4A4>innerhalb von 15 Sekunden zum Anwenden.'
+          warning: '<#FF3232>WARNUNG: Dieser Transfer schreibt gespeicherte Verlaufsdaten um und kann von LoriTime nicht rueckgaengig gemacht werden. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
           success: '<#1AFA29>Transfer abgeschlossen: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
           failure: '<#FF3232>Speichertransfer fehlgeschlagen.'
         confirm:

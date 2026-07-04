@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
+- New `lta` subcommand
+  - `transfer` to transfer playtime between servers and worlds
 ### Changed
 - Updated several dependencies
 ### Deprecated

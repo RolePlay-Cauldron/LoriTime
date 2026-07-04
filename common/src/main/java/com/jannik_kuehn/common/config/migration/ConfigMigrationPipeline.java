@@ -38,8 +38,8 @@ public final class ConfigMigrationPipeline {
             }
         }
 
-        if (!Integer.valueOf(schema.latestVersion()).equals(document.get(ConfigSchema.VERSION_PATH))) {
-            document.set(ConfigSchema.VERSION_PATH, schema.latestVersion());
+        if (!Integer.valueOf(schema.latestVersion()).equals(document.get(schema.versionPath()))) {
+            document.set(schema.versionPath(), schema.latestVersion());
             changed = true;
         }
 
@@ -47,7 +47,7 @@ public final class ConfigMigrationPipeline {
     }
 
     private int detectVersion(final StructuredConfigurationDocument document) {
-        final Object value = document.get(ConfigSchema.VERSION_PATH);
+        final Object value = document.get(schema.versionPath());
         if (value instanceof Number number) {
             return number.intValue();
         }

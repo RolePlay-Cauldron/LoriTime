@@ -237,7 +237,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "Lorias_", "time:3d");
 
         verify(context.storage()).getTime(eq(PLAYER_ID), eq(TimeScope.GLOBAL), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -252,7 +252,7 @@ class SenderRoleCommandTest {
         new LoriTimeCommand(context.plugin(), context.localization()).execute(sender, "Lorias_", "time:3d");
 
         verify(context.storage(), never()).getTime(eq(PLAYER_ID), eq(TimeScope.GLOBAL), any(TimeRange.class));
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -430,7 +430,7 @@ class SenderRoleCommandTest {
                 "Expected target server");
         assertTrue(requestCaptor.getValue().timeRange().isPresent(), "Expected parsed time range");
         assertEquals(Optional.of("3d"), requestCaptor.getValue().timeRangeInput(), "Expected raw time range");
-        verify(sender).sendMessage(any(TextComponent.class));
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
     }
 
     @Test

@@ -276,6 +276,9 @@ public class FileManager {
         if (CONFIG_FILE_NAME.equals(resourceFileName)) {
             return ConfigSchema.loriTimeConfig();
         }
+        if (resourceFileName.startsWith(LANGUAGE_FOLDER + "/") && resourceFileName.endsWith(".yml")) {
+            return ConfigSchema.localization();
+        }
         return null;
     }
 
