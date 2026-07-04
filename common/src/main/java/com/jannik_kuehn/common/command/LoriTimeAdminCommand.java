@@ -49,7 +49,9 @@ public class LoriTimeAdminCommand implements CommonCommand {
                 .register(AdminAction.RELOAD, "reload")
                 .register(AdminAction.DEBUG, "debug")
                 .register(AdminAction.INFO, "info")
-                .register(AdminAction.UPDATE, "update");
+                .register(AdminAction.UPDATE, "update")
+                .register(AdminAction.TRANSFER, "transfer")
+                .register(AdminAction.CONFIRM, "confirm");
         this.actions = new LoriTimeAdminActions(plugin, localization, this::usage);
     }
 
@@ -80,6 +82,8 @@ public class LoriTimeAdminCommand implements CommonCommand {
             case DEBUG -> actions.debug(sender, subCommandArgs);
             case INFO -> actions.info(sender, subCommandArgs);
             case UPDATE -> actions.update(sender, subCommandArgs);
+            case TRANSFER -> actions.transfer(sender, subCommandArgs);
+            case CONFIRM -> actions.confirm(sender, subCommandArgs);
         }
     }
 
@@ -97,6 +101,9 @@ public class LoriTimeAdminCommand implements CommonCommand {
         }
         if (args.length <= 1) {
             return router.complete(args.length == 0 ? "" : args[0]);
+        }
+        if (router.find(args[0]).filter(action -> action == AdminAction.TRANSFER).isPresent()) {
+            return actions.completeTransfer(source, Arrays.copyOfRange(args, 1, args.length));
         }
         return List.of();
     }
@@ -144,6 +151,14 @@ public class LoriTimeAdminCommand implements CommonCommand {
         /**
          * Starts the configured update flow.
          */
-        UPDATE
+        UPDATE,
+        /**
+         * Transfers one player's scoped storage data.
+         */
+        TRANSFER,
+        /**
+         * Confirms a pending administrative action.
+         */
+        CONFIRM
     }
 }

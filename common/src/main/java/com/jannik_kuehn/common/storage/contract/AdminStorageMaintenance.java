@@ -1,6 +1,7 @@
 package com.jannik_kuehn.common.storage.contract;
 
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceConfirmation;
 import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
@@ -57,6 +58,32 @@ public interface AdminStorageMaintenance {
      */
     StorageMaintenanceResult applyTransfer(StorageTransferRequest request,
                                            StorageMaintenanceConfirmation confirmation) throws StorageException;
+
+    /**
+     * Previews a player-scoped transfer operation without mutating storage.
+     *
+     * @param request transfer request
+     * @return operation preview
+     * @throws StorageException if the preview fails
+     */
+    default StorageMaintenancePreview previewPlayerTransfer(final PlayerStorageTransferRequest request)
+            throws StorageException {
+        throw new StorageException("Player-scoped transfer is not supported by this storage");
+    }
+
+    /**
+     * Applies a player-scoped transfer operation after preview confirmation.
+     *
+     * @param request      transfer request
+     * @param confirmation confirmation from the preview
+     * @return operation result
+     * @throws StorageException if the transfer fails
+     */
+    default StorageMaintenanceResult applyPlayerTransfer(final PlayerStorageTransferRequest request,
+                                                         final StorageMaintenanceConfirmation confirmation)
+            throws StorageException {
+        throw new StorageException("Player-scoped transfer is not supported by this storage");
+    }
 
     /**
      * Previews a scoped delete operation without mutating storage.

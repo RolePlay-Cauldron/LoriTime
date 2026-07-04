@@ -14,6 +14,7 @@ import com.jannik_kuehn.common.storage.database.table.WorldTable;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerSessionContext;
+import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceConfirmation;
@@ -30,7 +31,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -752,6 +757,60 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     }
 
     @Override
+    public StorageMaintenancePreview previewPlayerTransfer(final PlayerStorageTransferRequest request)
+            throws StorageException {
+        Objects.requireNonNull(request, "request");
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection()) {
+                return buildPlayerTransferPreview(connection, request);
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public StorageMaintenanceResult applyPlayerTransfer(final PlayerStorageTransferRequest request,
+                                                        final StorageMaintenanceConfirmation confirmation)
+            throws StorageException {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(confirmation, "confirmation");
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection()) {
+                final boolean autoCommit = connection.getAutoCommit();
+                connection.setAutoCommit(false);
+                try {
+                    final StorageMaintenancePreview preview = buildPlayerTransferPreview(connection, request);
+                    validateConfirmation(preview, confirmation);
+                    switch (request.operation()) {
+                        case SERVER_TRANSFER -> applyPlayerServerTransfer(connection, request);
+                        case WORLD_TRANSFER -> applyPlayerWorldTransfer(connection, request);
+                        default -> throw new StorageException("Unsupported player transfer operation: " + request.operation());
+                    }
+                    connection.commit();
+                    return new StorageMaintenanceResult(preview.operation(), preview.affectedSessions(),
+                            preview.affectedAdjustments(), preview.affectedPlayers());
+                } catch (final SQLException | StorageException | RuntimeException ex) {
+                    connection.rollback();
+                    throw ex;
+                } finally {
+                    connection.setAutoCommit(autoCommit);
+                }
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
     public StorageMaintenancePreview previewDelete(final StorageDeleteRequest request) throws StorageException {
         Objects.requireNonNull(request, "request");
         poolLock.readLock().lock();
@@ -845,6 +904,44 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         return new StorageMaintenancePreview(request.operation(), request.mappings(), null, counts.sessions(),
                 counts.adjustments(), counts.players(), targetDataExists, collisions, confirmationRequired,
                 fingerprint(request.operation(), request.mappings().toString(), null, counts, targetDataExists, collisions));
+    }
+
+    private StorageMaintenancePreview buildPlayerTransferPreview(final Connection connection,
+                                                                 final PlayerStorageTransferRequest request)
+            throws SQLException {
+        final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid());
+        final Counts counts;
+        final boolean targetDataExists;
+        final List<String> collisions = new ArrayList<>();
+        if (playerId.isEmpty()) {
+            counts = Counts.empty();
+            targetDataExists = false;
+        } else if (request.operation() == StorageMaintenanceOperation.SERVER_TRANSFER) {
+            validateMappingType(request.mapping(), StorageMaintenanceScope.Type.SERVER);
+            counts = countPlayerServer(connection, playerId.get(), request.mapping().source().server(), request.timeRange());
+            targetDataExists = countPlayerServer(connection, playerId.get(), request.mapping().target().server(),
+                    request.timeRange()).hasData();
+            collisions.addAll(serverWorldCollisions(connection, request.mapping().source().server(),
+                    request.mapping().target().server()));
+        } else if (request.operation() == StorageMaintenanceOperation.WORLD_TRANSFER) {
+            validateMappingType(request.mapping(), StorageMaintenanceScope.Type.WORLD);
+            counts = countPlayerWorld(connection, playerId.get(), request.mapping().source().server(),
+                    request.mapping().source().world(), request.timeRange());
+            targetDataExists = countPlayerWorld(connection, playerId.get(), request.mapping().target().server(),
+                    request.mapping().target().world(), request.timeRange()).hasData();
+            if (targetWorldExists(connection, request.mapping().target().server(), request.mapping().target().world())) {
+                collisions.add(request.mapping().target().server() + "/" + request.mapping().target().world());
+            }
+        } else {
+            throw new SQLException("Unsupported player transfer operation: " + request.operation());
+        }
+        final boolean confirmationRequired = targetDataExists || !collisions.isEmpty() || counts.hasData();
+        return new StorageMaintenancePreview(request.operation(), List.of(request.mapping()), null,
+                counts.sessions(), counts.adjustments(), counts.players(), targetDataExists, collisions,
+                confirmationRequired, Optional.of(request.playerUuid()), request.playerName(), request.timeRange(),
+                request.timeRangeInput(), fingerprint(request.operation(), request.mapping().toString(),
+                request.playerUuid() + ":" + request.timeRange().map(TimeRange::toString).orElse("all"),
+                counts, targetDataExists, collisions));
     }
 
     private StorageMaintenancePreview buildStorageTypeTransferPreview(final Connection sourceConnection,
@@ -1098,6 +1195,104 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         return new Counts(sessions, adjustments, players);
     }
 
+    private Counts countPlayerServer(final Connection connection,
+                                     final long playerId,
+                                     final String server,
+                                     final Optional<TimeRange> range) throws SQLException {
+        if (range.isPresent()) {
+            final long sessions = countPlayerServerSessionsInRange(connection, playerId, server, range.get());
+            final long adjustments = countPlayerServerAdjustmentsInRange(connection, playerId, server, range.get());
+            return new Counts(sessions, adjustments, sessions > 0 || adjustments > 0 ? 1L : 0L);
+        }
+        final long sessions = singleLong(connection,
+                "SELECT COUNT(*) FROM `" + timeTableName + "` t "
+                        + "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE t.`player_id` = ? AND s.`server` = ?", playerId, server);
+        final long adjustments = singleLong(connection,
+                "SELECT COUNT(*) FROM `" + adjustmentTableName + "` a "
+                        + "LEFT JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ws ON ws.`id` = w.`server_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ss ON ss.`id` = a.`server_id` "
+                        + "WHERE a.`player_id` = ? AND ((a.`scope_type` = 'SERVER' AND ss.`server` = ?) "
+                        + "OR (a.`scope_type` = 'WORLD' AND ws.`server` = ?))", playerId, server, server);
+        return new Counts(sessions, adjustments, sessions > 0 || adjustments > 0 ? 1L : 0L);
+    }
+
+    private Counts countPlayerWorld(final Connection connection,
+                                    final long playerId,
+                                    final String server,
+                                    final String world,
+                                    final Optional<TimeRange> range) throws SQLException {
+        if (range.isPresent()) {
+            final long sessions = countPlayerWorldSessionsInRange(connection, playerId, server, world, range.get());
+            final long adjustments = countPlayerWorldAdjustmentsInRange(connection, playerId, server, world, range.get());
+            return new Counts(sessions, adjustments, sessions > 0 || adjustments > 0 ? 1L : 0L);
+        }
+        final long sessions = singleLong(connection,
+                "SELECT COUNT(*) FROM `" + timeTableName + "` t "
+                        + "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE t.`player_id` = ? AND s.`server` = ? AND w.`world` = ?",
+                playerId, server, world);
+        final long adjustments = singleLong(connection,
+                "SELECT COUNT(*) FROM `" + adjustmentTableName + "` a "
+                        + "JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE a.`player_id` = ? AND a.`scope_type` = 'WORLD' "
+                        + "AND s.`server` = ? AND w.`world` = ?", playerId, server, world);
+        return new Counts(sessions, adjustments, sessions > 0 || adjustments > 0 ? 1L : 0L);
+    }
+
+    private long countPlayerServerSessionsInRange(final Connection connection,
+                                                  final long playerId,
+                                                  final String server,
+                                                  final TimeRange range) throws SQLException {
+        return matchingSessionIds(connection, playerId,
+                "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE t.`player_id` = ? AND s.`server` = ?",
+                range, server).size();
+    }
+
+    private long countPlayerWorldSessionsInRange(final Connection connection,
+                                                 final long playerId,
+                                                 final String server,
+                                                 final String world,
+                                                 final TimeRange range) throws SQLException {
+        return matchingSessionIds(connection, playerId,
+                "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE t.`player_id` = ? AND s.`server` = ? AND w.`world` = ?",
+                range, server, world).size();
+    }
+
+    private long countPlayerServerAdjustmentsInRange(final Connection connection,
+                                                     final long playerId,
+                                                     final String server,
+                                                     final TimeRange range) throws SQLException {
+        return matchingAdjustmentIds(connection, playerId,
+                "LEFT JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ws ON ws.`id` = w.`server_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ss ON ss.`id` = a.`server_id` "
+                        + "WHERE a.`player_id` = ? AND ((a.`scope_type` = 'SERVER' AND ss.`server` = ?) "
+                        + "OR (a.`scope_type` = 'WORLD' AND ws.`server` = ?))",
+                range, server, server).size();
+    }
+
+    private long countPlayerWorldAdjustmentsInRange(final Connection connection,
+                                                    final long playerId,
+                                                    final String server,
+                                                    final String world,
+                                                    final TimeRange range) throws SQLException {
+        return matchingAdjustmentIds(connection, playerId,
+                "JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE a.`player_id` = ? AND a.`scope_type` = 'WORLD' "
+                        + "AND s.`server` = ? AND w.`world` = ?",
+                range, server, world).size();
+    }
+
     private long countRows(final Connection connection, final String tableName) throws SQLException {
         return singleLong(connection, "SELECT COUNT(*) FROM `" + tableName + "`");
     }
@@ -1193,6 +1388,55 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         }
     }
 
+    private void applyPlayerServerTransfer(final Connection connection, final PlayerStorageTransferRequest request)
+            throws SQLException {
+        validateMappingType(request.mapping(), StorageMaintenanceScope.Type.SERVER);
+        final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid());
+        if (playerId.isEmpty()) {
+            return;
+        }
+        final String sourceServer = request.mapping().source().server();
+        final String targetServer = request.mapping().target().server();
+        if (sourceServer.equals(targetServer)) {
+            return;
+        }
+        final Optional<Long> sourceServerId = serverTable.findId(connection, sourceServer);
+        if (sourceServerId.isEmpty()) {
+            return;
+        }
+        final long targetServerId = serverTable.ensureServer(connection, targetServer);
+        for (final WorldRow sourceWorld : sourceWorlds(connection, sourceServerId.get())) {
+            final long targetWorldId = worldTable.ensureWorld(connection, targetServer, sourceWorld.world());
+            updatePlayerWorldReferences(connection, playerId.get(), sourceWorld.worldId(), targetWorldId,
+                    request.timeRange());
+            deleteWorldIfUnreferenced(connection, sourceWorld.worldId());
+        }
+        updatePlayerServerAdjustments(connection, playerId.get(), sourceServerId.get(), targetServerId,
+                request.timeRange());
+        deleteServerIfUnreferenced(connection, sourceServerId.get());
+    }
+
+    private void applyPlayerWorldTransfer(final Connection connection, final PlayerStorageTransferRequest request)
+            throws SQLException {
+        validateMappingType(request.mapping(), StorageMaintenanceScope.Type.WORLD);
+        final Optional<Long> playerId = playerTable.findIdByUuid(connection, request.playerUuid());
+        if (playerId.isEmpty()) {
+            return;
+        }
+        final Optional<Long> sourceWorldId = worldTable.findId(connection, request.mapping().source().server(),
+                request.mapping().source().world());
+        if (sourceWorldId.isEmpty()) {
+            return;
+        }
+        final long targetWorldId = worldTable.ensureWorld(connection, request.mapping().target().server(),
+                request.mapping().target().world());
+        if (sourceWorldId.get().equals(targetWorldId)) {
+            return;
+        }
+        updatePlayerWorldReferences(connection, playerId.get(), sourceWorldId.get(), targetWorldId, request.timeRange());
+        deleteWorldIfUnreferenced(connection, sourceWorldId.get());
+    }
+
     private void rejectNonEmptyStorageTypeTarget(final Connection connection) throws SQLException, StorageException {
         if (storageHasTransferBlockingData(connection)) {
             throw new StorageException("Target storage must be empty before storage-type transfer");
@@ -1228,6 +1472,38 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         }
     }
 
+    private void updatePlayerWorldReferences(final Connection connection,
+                                             final long playerId,
+                                             final long sourceWorldId,
+                                             final long targetWorldId,
+                                             final Optional<TimeRange> range)
+            throws SQLException {
+        if (range.isPresent()) {
+            for (final long sessionId : matchingSessionIds(connection, playerId,
+                    "WHERE t.`player_id` = ? AND t.`world_id` = ?", range.get(), sourceWorldId)) {
+                updateRowWorldReference(connection, timeTableName, sessionId, targetWorldId);
+            }
+            for (final long adjustmentId : matchingAdjustmentIds(connection, playerId,
+                    "WHERE a.`player_id` = ? AND a.`scope_type` = 'WORLD' AND a.`world_id` = ?",
+                    range.get(), sourceWorldId)) {
+                updateRowWorldReference(connection, adjustmentTableName, adjustmentId, targetWorldId);
+            }
+            return;
+        }
+        try (PreparedStatement updateTime = connection.prepareStatement(
+                "UPDATE `" + timeTableName + "` SET `world_id` = ? "
+                        + "WHERE `player_id` = ? AND `world_id` = ?" + sessionRangeCondition(range));
+             PreparedStatement updateAdjustments = connection.prepareStatement(
+                     "UPDATE `" + adjustmentTableName + "` SET `world_id` = ? "
+                             + "WHERE `player_id` = ? AND `scope_type` = 'WORLD' AND `world_id` = ?"
+                             + adjustmentRangeCondition(range))) {
+            setUpdateWorldReferenceParams(updateTime, targetWorldId, playerId, sourceWorldId, range);
+            updateTime.executeUpdate();
+            setUpdateWorldReferenceParams(updateAdjustments, targetWorldId, playerId, sourceWorldId, range);
+            updateAdjustments.executeUpdate();
+        }
+    }
+
     private void updateServerAdjustments(final Connection connection, final long sourceServerId, final long targetServerId)
             throws SQLException {
         try (PreparedStatement update = connection.prepareStatement(
@@ -1237,6 +1513,73 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             update.setLong(2, sourceServerId);
             update.executeUpdate();
         }
+    }
+
+    private void updatePlayerServerAdjustments(final Connection connection,
+                                               final long playerId,
+                                               final long sourceServerId,
+                                               final long targetServerId,
+                                               final Optional<TimeRange> range)
+            throws SQLException {
+        if (range.isPresent()) {
+            for (final long adjustmentId : matchingAdjustmentIds(connection, playerId,
+                    "WHERE a.`player_id` = ? AND a.`scope_type` = 'SERVER' AND a.`server_id` = ?",
+                    range.get(), sourceServerId)) {
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE `" + adjustmentTableName + "` SET `server_id` = ? WHERE `id` = ?")) {
+                    update.setLong(1, targetServerId);
+                    update.setLong(2, adjustmentId);
+                    update.executeUpdate();
+                }
+            }
+            return;
+        }
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE `" + adjustmentTableName + "` SET `server_id` = ? "
+                        + "WHERE `player_id` = ? AND `scope_type` = 'SERVER' AND `server_id` = ?"
+                        + adjustmentRangeCondition(range))) {
+            update.setLong(1, targetServerId);
+            update.setLong(2, playerId);
+            update.setLong(3, sourceServerId);
+            setRangeParams(update, 4, range);
+            update.executeUpdate();
+        }
+    }
+
+    private void updateRowWorldReference(final Connection connection,
+                                         final String tableName,
+                                         final long rowId,
+                                         final long targetWorldId)
+            throws SQLException {
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE `" + tableName + "` SET `world_id` = ? WHERE `id` = ?")) {
+            update.setLong(1, targetWorldId);
+            update.setLong(2, rowId);
+            update.executeUpdate();
+        }
+    }
+
+    private void setUpdateWorldReferenceParams(final PreparedStatement update,
+                                               final long targetWorldId,
+                                               final long playerId,
+                                               final long sourceWorldId,
+                                               final Optional<TimeRange> range)
+            throws SQLException {
+        update.setLong(1, targetWorldId);
+        update.setLong(2, playerId);
+        update.setLong(3, sourceWorldId);
+        setRangeParams(update, 4, range);
+    }
+
+    private void setRangeParams(final PreparedStatement statement,
+                                final int startIndex,
+                                final Optional<TimeRange> range)
+            throws SQLException {
+        if (range.isEmpty()) {
+            return;
+        }
+        setRangeParam(statement, startIndex, range.get().startInclusive());
+        setRangeParam(statement, startIndex + 1, range.get().endExclusive());
     }
 
     private void deleteServerScope(final Connection connection, final String server) throws SQLException {
@@ -1304,6 +1647,8 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             for (int i = 0; i < params.length; i++) {
                 if (params[i] instanceof final Long value) {
                     select.setLong(i + 1, value);
+                } else if (params[i] instanceof final Timestamp value) {
+                    select.setTimestamp(i + 1, value);
                 } else {
                     select.setString(i + 1, params[i].toString());
                 }
@@ -1312,6 +1657,133 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                 return result.next() ? result.getLong(1) : 0L;
             }
         }
+    }
+
+    private List<Long> matchingSessionIds(final Connection connection,
+                                          final long playerId,
+                                          final String sqlTail,
+                                          final TimeRange range,
+                                          final Object... params)
+            throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        final String sql = "SELECT t.`id`, t.`join_time`, t.`leave_time` FROM `" + timeTableName + "` t " + sqlTail;
+        try (PreparedStatement select = connection.prepareStatement(sql)) {
+            select.setLong(1, playerId);
+            bindParams(select, 2, params);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    if (isFullyInside(result, range)) {
+                        ids.add(result.getLong("id"));
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    private List<Long> matchingAdjustmentIds(final Connection connection,
+                                             final long playerId,
+                                             final String sqlTail,
+                                             final TimeRange range,
+                                             final Object... params)
+            throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        final String sql = "SELECT a.`id`, a.`created_at` FROM `" + adjustmentTableName + "` a " + sqlTail;
+        try (PreparedStatement select = connection.prepareStatement(sql)) {
+            select.setLong(1, playerId);
+            bindParams(select, 2, params);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    if (range.contains(readInstant(result, "created_at"))) {
+                        ids.add(result.getLong("id"));
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    private void bindParams(final PreparedStatement statement, final int startIndex, final Object... params)
+            throws SQLException {
+        for (int index = 0; index < params.length; index++) {
+            final Object param = params[index];
+            if (param instanceof final Long value) {
+                statement.setLong(startIndex + index, value);
+            } else {
+                statement.setString(startIndex + index, param.toString());
+            }
+        }
+    }
+
+    private boolean isFullyInside(final ResultSet result, final TimeRange range) throws SQLException {
+        return !readInstant(result, "join_time").isBefore(range.startInclusive())
+                && readInstant(result, "leave_time").isBefore(range.endExclusive());
+    }
+
+    private Instant readInstant(final ResultSet result, final String column) throws SQLException {
+        final Object value = result.getObject(column);
+        if (value instanceof final Timestamp timestamp) {
+            return timestamp.toInstant();
+        }
+        if (value instanceof final Number number) {
+            return Instant.ofEpochMilli(number.longValue());
+        }
+        if (value instanceof final LocalDateTime localDateTime) {
+            return localDateTime.toInstant(ZoneOffset.UTC);
+        }
+        if (value instanceof final String text && !text.isBlank()) {
+            try {
+                return Instant.ofEpochMilli(Long.parseLong(text));
+            } catch (final NumberFormatException ignored) {
+                // Continue with timestamp formats below.
+            }
+            try {
+                return Timestamp.valueOf(text).toInstant();
+            } catch (final IllegalArgumentException ignored) {
+                // Continue with ISO-8601 parsing below.
+            }
+            try {
+                return Instant.parse(text);
+            } catch (final DateTimeParseException exception) {
+                throw new SQLException("Unsupported timestamp value: " + text, exception);
+            }
+        }
+        throw new SQLException("Unsupported timestamp value for column " + column + ": " + value);
+    }
+
+    private String sessionRangeCondition(final Optional<TimeRange> range) {
+        if (range.isEmpty()) {
+            return "";
+        }
+        if (dialect == DatabaseDialect.SQLITE) {
+            return " AND " + sqliteEpochMillis("t.`join_time`") + " >= ? AND "
+                    + sqliteEpochMillis("t.`leave_time`") + " < ?";
+        }
+        return " AND t.`join_time` >= ? AND t.`leave_time` < ?";
+    }
+
+    private String adjustmentRangeCondition(final Optional<TimeRange> range) {
+        if (range.isEmpty()) {
+            return "";
+        }
+        if (dialect == DatabaseDialect.SQLITE) {
+            return " AND " + sqliteEpochMillis("a.`created_at`") + " >= ? AND "
+                    + sqliteEpochMillis("a.`created_at`") + " < ?";
+        }
+        return " AND a.`created_at` >= ? AND a.`created_at` < ?";
+    }
+
+    private String sqliteEpochMillis(final String column) {
+        return "CAST(((julianday(" + column + ") - 2440587.5) * 86400000) AS INTEGER)";
+    }
+
+    private void setRangeParam(final PreparedStatement statement, final int index, final Instant instant)
+            throws SQLException {
+        if (dialect == DatabaseDialect.SQLITE) {
+            statement.setLong(index, instant.toEpochMilli());
+            return;
+        }
+        statement.setTimestamp(index, Timestamp.from(instant));
     }
 
     @Override
