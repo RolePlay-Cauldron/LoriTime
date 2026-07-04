@@ -78,9 +78,8 @@ public final class ConfigSchema {
      * @return localization schema
      */
     public static ConfigSchema localization() {
-        return new ConfigSchema(0, 3, "schema_version", List.of(
-                ConfigSchemaLocalizationMigrations.transferWarning(),
-                ConfigSchemaLocalizationMigrations.deleteHistoryMessages()));
+        return new ConfigSchema(0, 2, "schema_version", List.of(
+                ConfigSchemaLocalizationMigrations.transferWarning()));
     }
 
     /**
