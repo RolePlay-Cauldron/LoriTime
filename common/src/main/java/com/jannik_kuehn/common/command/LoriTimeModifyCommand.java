@@ -5,6 +5,7 @@ import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.LoriTimePlayer;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.command.core.CommandMessages;
+import com.jannik_kuehn.common.command.core.CommandScopeResolver;
 import com.jannik_kuehn.common.command.core.CommandScopes;
 import com.jannik_kuehn.common.command.core.CommandScopes.ParsedScope;
 import com.jannik_kuehn.common.command.core.CommandScopes.ParsedScopeFlags;
@@ -17,7 +18,6 @@ import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.platform.CommonCommand;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
-import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 import com.jannik_kuehn.common.utils.TimeParser;
@@ -377,22 +377,8 @@ public class LoriTimeModifyCommand implements CommonCommand {
     }
 
     private Optional<TimeScope> resolveScope(final CommonSender sender, final ParsedScopeFlags scopeFlags) {
-        if (!scopeFlags.hasWorld()) {
-            return Optional.of(scopeFlags.hasServer() ? TimeScope.server(scopeFlags.serverName()) : TimeScope.GLOBAL);
-        }
-        if (scopeFlags.hasServer()) {
-            return Optional.of(TimeScope.world(scopeFlags.serverName(), scopeFlags.worldName()));
-        }
-        return resolveDefaultServer(sender).map(serverName -> TimeScope.world(serverName, scopeFlags.worldName()));
-    }
-
-    private Optional<String> resolveDefaultServer(final CommonSender sender) {
-        final CommonServer server = plugin.getServer();
-        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
-            return server.getCurrentServer(playerSender.getUniqueId())
-                    .or(server::getLocalServerName);
-        }
-        return Optional.empty();
+        return CommandScopeResolver.timeScope(plugin.getServer(), sender,
+                scopeFlags.hasServer(), scopeFlags.serverName(), scopeFlags.hasWorld(), scopeFlags.worldName());
     }
 
     private void usage(final CommonSender sender) {

@@ -159,11 +159,7 @@ public final class LoriTimeLookupCompletions {
         if (explicitServer.isPresent()) {
             return explicitServer;
         }
-        if (source instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
-            return plugin.getServer().getCurrentServer(playerSender.getUniqueId())
-                    .or(plugin.getServer()::getLocalServerName);
-        }
-        return plugin.getServer().getLocalServerName();
+        return CommandScopeResolver.completionDefaultServer(plugin.getServer(), source);
     }
 
     private List<String> prefixValues(final String prefix, final List<String> values) {

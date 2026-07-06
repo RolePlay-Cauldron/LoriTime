@@ -5,6 +5,7 @@ import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.LoriTimePlayer;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.command.core.CommandMessages;
+import com.jannik_kuehn.common.command.core.CommandScopeResolver;
 import com.jannik_kuehn.common.command.core.CommandScopes;
 import com.jannik_kuehn.common.command.core.CommandScopes.LookupRequest;
 import com.jannik_kuehn.common.command.core.LoriTimeLookupCompletions;
@@ -13,7 +14,6 @@ import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.platform.CommonCommand;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
-import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.util.List;
@@ -175,22 +175,8 @@ public class LoriTimeCommand implements CommonCommand {
     }
 
     private Optional<TimeScope> resolveScope(final CommonSender sender, final LookupRequest request) {
-        if (!request.hasWorld()) {
-            return Optional.of(request.hasServer() ? TimeScope.server(request.serverName()) : TimeScope.GLOBAL);
-        }
-        if (request.hasServer()) {
-            return Optional.of(TimeScope.world(request.serverName(), request.worldName()));
-        }
-        return resolveDefaultServer(sender).map(serverName -> TimeScope.world(serverName, request.worldName()));
-    }
-
-    private Optional<String> resolveDefaultServer(final CommonSender sender) {
-        final CommonServer server = loriTimePlugin.getServer();
-        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
-            return server.getCurrentServer(playerSender.getUniqueId())
-                    .or(server::getLocalServerName);
-        }
-        return Optional.empty();
+        return CommandScopeResolver.timeScope(loriTimePlugin.getServer(), sender,
+                request.hasServer(), request.serverName(), request.hasWorld(), request.worldName());
     }
 
     private String noTimeMessage(final String targetName, final TimeScope scope, final LookupRequest request) {

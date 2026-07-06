@@ -5,13 +5,13 @@ import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.command.core.CommandCompletions;
 import com.jannik_kuehn.common.command.core.CommandMessages;
+import com.jannik_kuehn.common.command.core.CommandScopeResolver;
 import com.jannik_kuehn.common.command.core.CommandScopes;
 import com.jannik_kuehn.common.command.core.PlayerNameCompletions;
 import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
-import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.scheduler.PluginTask;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
@@ -625,12 +625,7 @@ final class LoriTimeAdminActions {
     }
 
     private Optional<String> resolveDefaultServer(final CommonSender sender) {
-        final CommonServer server = plugin.getServer();
-        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
-            return server.getCurrentServer(playerSender.getUniqueId())
-                    .or(server::getLocalServerName);
-        }
-        return Optional.empty();
+        return CommandScopeResolver.executionDefaultServer(plugin.getServer(), sender);
     }
 
     private String assignOnce(final String current, final String argument, final int prefixLength) {
@@ -774,11 +769,7 @@ final class LoriTimeAdminActions {
         if (explicitServer.isPresent()) {
             return explicitServer;
         }
-        if (sender instanceof final CommonPlayerSender playerSender && playerSender.getUniqueId() != null) {
-            return plugin.getServer().getCurrentServer(playerSender.getUniqueId())
-                    .or(plugin.getServer()::getLocalServerName);
-        }
-        return plugin.getServer().getLocalServerName();
+        return CommandScopeResolver.completionDefaultServer(plugin.getServer(), sender);
     }
 
     private Optional<String> findFlagValue(final String[] args, final String longPrefix, final String shortPrefix) {
