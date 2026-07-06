@@ -143,13 +143,23 @@ public final class LoriTimeLookupCompletions {
 
     private List<String> suggestWorldValues(final CommonSender source, final String prefix,
                                             final String argument, final String... args) {
-        final Optional<String> serverName = findFlagValue(args, CommandScopes.SERVER_PREFIX, CommandScopes.SHORT_SERVER_PREFIX);
-        final Optional<UUID> playerUniqueId = findOnlinePlayerToken(args)
-                .or(() -> source instanceof CommonPlayerSender playerSender
-                        ? Optional.ofNullable(playerSender.getUniqueId())
-                        : Optional.empty());
-        return prefixValues(prefix, plugin.getScopeSuggestionCache().suggestWorlds(
-                plugin.getServer().getLiveWorldNames(serverName, playerUniqueId), valuePrefix(prefix, argument)));
+        final Optional<String> serverName = resolveWorldCompletionServer(source, args);
+        if (serverName.isEmpty()) {
+            return List.of();
+        }
+        final Optional<UUID> sourceUniqueId = source instanceof CommonPlayerSender playerSender
+                ? Optional.ofNullable(playerSender.getUniqueId())
+                : Optional.empty();
+        return prefixValues(prefix, plugin.getScopeSuggestionCache().suggestWorlds(serverName.get(),
+                plugin.getServer().getLiveWorldNames(serverName, sourceUniqueId), valuePrefix(prefix, argument)));
+    }
+
+    private Optional<String> resolveWorldCompletionServer(final CommonSender source, final String... args) {
+        final Optional<String> explicitServer = findFlagValue(args, CommandScopes.SERVER_PREFIX, CommandScopes.SHORT_SERVER_PREFIX);
+        if (explicitServer.isPresent()) {
+            return explicitServer;
+        }
+        return CommandScopeResolver.completionDefaultServer(plugin.getServer(), source);
     }
 
     private List<String> prefixValues(final String prefix, final List<String> values) {
@@ -160,14 +170,6 @@ public final class LoriTimeLookupCompletions {
 
     private String valuePrefix(final String prefix, final String argument) {
         return argument.substring(prefix.length());
-    }
-
-    private Optional<UUID> findOnlinePlayerToken(final String... args) {
-        return Arrays.stream(args)
-                .filter(argument -> !argument.contains(":"))
-                .findFirst()
-                .flatMap(argument -> plugin.getServer().getPlayer(argument))
-                .map(CommonPlayerSender::getUniqueId);
     }
 
     private Optional<String> findFlagValue(final String[] args, final String longPrefix, final String shortPrefix) {

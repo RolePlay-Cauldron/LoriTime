@@ -5,7 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -113,6 +115,31 @@ public final class WorldTable {
             }
         }
         return worlds;
+    }
+
+    /**
+     * Reads all known world names grouped by their server.
+     *
+     * @param connection database connection
+     * @return known world names by server name
+     * @throws SQLException if lookup fails
+     */
+    public Map<String, Set<String>> getAllWorldsByServer(final Connection connection, final String timeTableName)
+            throws SQLException {
+        final Map<String, Set<String>> worldsByServer = new LinkedHashMap<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT DISTINCT s.`server`, w.`world` FROM `" + timeTableName + "` t "
+                        + "JOIN `" + tableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTable + "` s ON s.`id` = w.`server_id` "
+                        + "ORDER BY s.`server`, w.`world`");
+             ResultSet result = select.executeQuery()) {
+            while (result.next()) {
+                worldsByServer
+                        .computeIfAbsent(result.getString("server"), ignored -> new LinkedHashSet<>())
+                        .add(result.getString("world"));
+            }
+        }
+        return worldsByServer;
     }
 
     @Override

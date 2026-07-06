@@ -6,31 +6,31 @@ messages:
     second:
       singular: 'Sekunde'
       plural: 'Sekunden'
-      identifier: ['s', 'sec', 'sek']
+      identifier: [ 's', 'sec', 'sek' ]
     minute:
       singular: 'Minute'
       plural: 'Minuten'
-      identifier: ['m', 'min']
+      identifier: [ 'm', 'min' ]
     hour:
       singular: 'Stunde'
       plural: 'Stunden'
-      identifier: ['h', 'std']
+      identifier: [ 'h', 'std' ]
     day:
       singular: 'Tag'
       plural: 'Tage'
-      identifier: ['t', 'd']
+      identifier: [ 't', 'd' ]
     week:
       singular: 'Woche'
       plural: 'Wochen'
-      identifier: ['w', 'wo']
+      identifier: [ 'w', 'wo' ]
     month:
       singular: 'Monat'
       plural: 'Monate'
-      identifier: ['mo']
+      identifier: [ 'mo' ]
     year:
       singular: 'Jahr'
       plural: 'Jahre'
-      identifier: ['j', 'y', 'yhr']
+      identifier: [ 'j', 'y', 'yhr' ]
   message:
     noPermission: '<#FF3232>Dazu fehlen dir die Rechte.'
     error: '<#FF3232>Es ist ein Fehler aufgetreten.'
@@ -79,6 +79,12 @@ messages:
           warning: '<#FF3232>WARNUNG: Dieser Transfer schreibt gespeicherte Verlaufsdaten um und kann von LoriTime nicht rueckgaengig gemacht werden. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
           success: '<#1AFA29>Transfer abgeschlossen: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
           failure: '<#FF3232>Speichertransfer fehlgeschlagen.'
+        deleteHistory:
+          usage: '<#A4A4A4>Benutze <red>/loritimeadmin deleteHistory [player] server:<source> [world:<source>] [time:<range>] <#A4A4A4>um das Loeschen von Verlaufsdaten vorzubereiten. Ohne Spieler werden alle Spieler beruecksichtigt.'
+          preview: '<#A4A4A4>DeleteHistory-Vorschau fuer <#50CBAB>[player]<#A4A4A4>: Scope <#50CBAB>[scope]<#A4A4A4>, Zeitraum <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>Sitzungen, <#50CBAB>[adjustments] <#A4A4A4>Anpassungen, <#50CBAB>[players] <#A4A4A4>Spieler. Nutze <red>/lta confirm <#A4A4A4>innerhalb von 15 Sekunden zum Anwenden.'
+          warning: '<#FF3232>WARNUNG: Dieses Loeschen entfernt gespeicherte Verlaufsdaten und kann von LoriTime nicht rueckgaengig gemacht werden. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
+          success: '<#1AFA29>Verlaufsdaten geloescht: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
+          failure: '<#FF3232>Loeschen der Verlaufsdaten fehlgeschlagen.'
         confirm:
           none: '<#FF3232>Es gibt keine ausstehende Admin-Aktion zum Bestätigen.'
           expired: '<#FF3232>Die ausstehende Admin-Aktion ist abgelaufen. Führe die Vorschau erneut aus.'

@@ -103,6 +103,7 @@ class ConfigMigrationPipelineTest {
         assertEquals("custom value", resultMessages.get("message.customPlugin.custom_key"));
         assertEquals(2, result.document().get("schema_version"));
         assertNotNull(result.document().get("messages.message.command.loritimeadmin.transfer.warning"));
+        assertNotNull(result.document().get("messages.message.command.loritimeadmin.deleteHistory.warning"));
         assertEquals("default permission", mergedMessages.get("message.noPermission"));
         assertEquals(2, merged.get("schema_version"));
     }

@@ -625,6 +625,121 @@ class UnifiedDatabaseStorageTest {
     }
 
     @Test
+    void maintenanceDeletePlayerServerKeepsOtherPlayersAndGlobalAdjustments() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+
+            storage.setPlayerName(PLAYER, "Lorias_");
+            storage.setPlayerName(OTHER_PLAYER, "Other");
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    1_000L, 11_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.persistSession(new PlayerSessionChunk(OTHER_PLAYER, Optional.of("Other"), "survival", "world",
+                    1_000L, 6_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.addTime(new ManualTimeAdjustment(PLAYER, 7L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE"));
+            storage.addTime(new ManualTimeAdjustment(PLAYER, 5L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                    TimeScope.server("survival")));
+            final StorageDeleteRequest request = StorageDeleteRequest.player(StorageMaintenanceScope.server("survival"),
+                    PLAYER, Optional.of("Lorias_"), Optional.empty(), Optional.empty());
+
+            final StorageMaintenancePreview preview = storage.previewDelete(request);
+            storage.applyDelete(request, preview.confirmation());
+
+            assertEquals(Optional.of(PLAYER), preview.playerUuid(), "Expected selected player UUID in preview");
+            assertEquals(Optional.of("Lorias_"), preview.playerName(), "Expected selected player name in preview");
+            assertEquals(1L, preview.affectedPlayers(), "Expected one affected player");
+            assertEquals(OptionalLong.of(7L), storage.getTime(PLAYER), "Expected global adjustment to remain");
+            assertTrue(storage.getTime(PLAYER, TimeScope.server("survival")).isEmpty(),
+                    "Expected selected player's server history to be deleted");
+            assertEquals(OptionalLong.of(5L), storage.getTime(OTHER_PLAYER, TimeScope.server("survival")),
+                    "Expected other player's server history to remain");
+            assertEquals(Optional.of(PLAYER), storage.getUuid("Lorias_"), "Expected selected player identity to remain");
+        }
+    }
+
+    @Test
+    void maintenanceDeleteAllPlayerWorldTimeRangeUsesWholeRowsOnly() throws Exception {
+        final TimeRange range = TimeRange.between(Instant.ofEpochMilli(10_000L), Instant.ofEpochMilli(25_000L));
+        try (UnifiedDatabaseStorage storage = storage()) {
+
+            storage.setPlayerName(PLAYER, "Lorias_");
+            storage.setPlayerName(OTHER_PLAYER, "Other");
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    12_000L, 20_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    5_000L, 15_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.persistSession(new PlayerSessionChunk(OTHER_PLAYER, Optional.of("Other"), "survival", "world",
+                    14_000L, 18_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.addTime(new ManualTimeAdjustment(PLAYER, 3L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                    TimeScope.world("survival", "world")));
+            updateAdjustmentCreatedAt(3L, Instant.ofEpochMilli(15_000L));
+            storage.addTime(new ManualTimeAdjustment(OTHER_PLAYER, 4L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                    TimeScope.world("survival", "world")));
+            updateAdjustmentCreatedAt(4L, Instant.ofEpochMilli(30_000L));
+            storage.addTime(new ManualTimeAdjustment(PLAYER, 9L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                    TimeScope.server("survival")));
+            final StorageDeleteRequest request = StorageDeleteRequest.allPlayers(
+                    StorageMaintenanceScope.world("survival", "world"), Optional.of(range), Optional.of("15s"));
+
+            final StorageMaintenancePreview preview = storage.previewDelete(request);
+            storage.applyDelete(request, preview.confirmation());
+
+            assertEquals(Optional.of(range), preview.timeRange(), "Expected selected range in preview");
+            assertEquals(Optional.of("15s"), preview.timeRangeInput(), "Expected raw range input in preview");
+            assertEquals(2L, preview.affectedSessions(), "Expected only fully contained sessions");
+            assertEquals(1L, preview.affectedAdjustments(), "Expected only in-range world adjustment");
+            assertEquals(2L, preview.affectedPlayers(), "Expected both players to be affected by sessions");
+            assertEquals(OptionalLong.of(10L), storage.getTime(PLAYER, TimeScope.world("survival", "world")),
+                    "Expected partially overlapping session to remain");
+            assertEquals(OptionalLong.of(4L), storage.getTime(OTHER_PLAYER, TimeScope.world("survival", "world")),
+                    "Expected out-of-range adjustment to remain");
+            assertEquals(OptionalLong.of(19L), storage.getTime(PLAYER, TimeScope.server("survival")),
+                    "Expected server adjustment and partial session to remain after world delete");
+        }
+    }
+
+    @Test
+    void maintenanceDeleteConfirmationMismatchRejectsWithoutChangingData() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+
+            storage.setPlayerName(PLAYER, "Lorias_");
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    1_000L, 11_000L, TimeEntryReason.PLAYER_LEAVE));
+            final StorageDeleteRequest request = StorageDeleteRequest.allPlayers(
+                    StorageMaintenanceScope.world("survival", "world"), Optional.empty(), Optional.empty());
+
+            assertThrows(StorageException.class, () -> storage.applyDelete(request,
+                    new StorageMaintenanceConfirmation("different")), "Expected mismatched confirmation to fail");
+            assertEquals(OptionalLong.of(10L), storage.getTime(PLAYER, TimeScope.world("survival", "world")),
+                    "Expected source data to remain after rejection");
+        }
+    }
+
+    @Test
+    void maintenanceDeleteRollsBackWhenApplyFails() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+
+            storage.setPlayerName(PLAYER, "Lorias_");
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    1_000L, 11_000L, TimeEntryReason.PLAYER_LEAVE));
+            storage.addTime(new ManualTimeAdjustment(PLAYER, 5L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                    TimeScope.world("survival", "world")));
+            final StorageDeleteRequest request = StorageDeleteRequest.allPlayers(
+                    StorageMaintenanceScope.world("survival", "world"), Optional.empty(), Optional.empty());
+            final StorageMaintenancePreview preview = storage.previewDelete(request);
+            try (Connection connection = openSqlite();
+                 Statement statement = connection.createStatement()) {
+                statement.executeUpdate("CREATE TRIGGER fail_adjustment_delete BEFORE DELETE ON `"
+                        + TABLE_PREFIX + "_time_adjustment` BEGIN SELECT RAISE(ABORT, 'fail delete'); END");
+            }
+
+            assertThrows(StorageException.class, () -> storage.applyDelete(request, preview.confirmation()),
+                    "Expected trigger failure to abort delete");
+
+            assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER, TimeScope.world("survival", "world")),
+                    "Expected session and adjustment rows to be restored by rollback");
+        }
+    }
+
+    @Test
     void maintenanceConfirmationMismatchRejectsWithoutChangingData() throws Exception {
         try (UnifiedDatabaseStorage storage = storage()) {
 

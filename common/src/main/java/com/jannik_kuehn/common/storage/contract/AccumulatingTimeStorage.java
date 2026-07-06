@@ -94,6 +94,11 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator 
     }
 
     @Override
+    public Map<String, Set<String>> getKnownWorldNamesByServer() throws StorageException {
+        return storage.getKnownWorldNamesByServer();
+    }
+
+    @Override
     public OptionalLong getTime(final UUID uniqueId) throws StorageException {
         return getTime(uniqueId, TimeScope.GLOBAL);
     }

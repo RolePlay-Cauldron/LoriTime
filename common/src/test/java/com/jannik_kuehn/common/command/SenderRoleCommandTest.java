@@ -20,6 +20,7 @@ import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
+import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceOperation;
 import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceResult;
@@ -305,8 +306,9 @@ class SenderRoleCommandTest {
     @Test
     void worldScopedLookupDefaultsToProxyCurrentServer() throws StorageException {
         final CommandContext context = new CommandContext();
-        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
-        when(sender.hasPermission("loritime.see.world.other")).thenReturn(true);
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
+        when(sender.hasPermission("loritime.see.world")).thenReturn(true);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
         when(context.server().isProxy()).thenReturn(true);
         when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("minigames"));
         when(context.storage().getUuid("Lorias_")).thenReturn(Optional.of(PLAYER_ID));
@@ -522,8 +524,9 @@ class SenderRoleCommandTest {
     @Test
     void adminTransferDefaultsWorldSourceToLocalServer() throws Exception {
         final CommandContext context = new CommandContext();
-        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
         final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
         when(context.server().getLocalServerName()).thenReturn(Optional.of("survival"));
         when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
         final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
@@ -542,8 +545,9 @@ class SenderRoleCommandTest {
     @Test
     void adminTransferDefaultsWorldSourceToProxyCurrentServer() throws Exception {
         final CommandContext context = new CommandContext();
-        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
         final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
         when(context.server().isProxy()).thenReturn(true);
         when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("minigames"));
         when(maintenance.previewPlayerTransfer(any(PlayerStorageTransferRequest.class))).thenReturn(transferPreview());
@@ -643,6 +647,124 @@ class SenderRoleCommandTest {
 
         verify(context.storage(), never()).getUuid(anyString());
         verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminDeleteHistoryPreviewsPlayerServerDeleteWithTimeRange() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(maintenance.previewDelete(any(StorageDeleteRequest.class))).thenReturn(deletePreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "deleteHistory", "Lorias_", "server:survival", "time:3d");
+
+        final ArgumentCaptor<StorageDeleteRequest> requestCaptor =
+                ArgumentCaptor.forClass(StorageDeleteRequest.class);
+        verify(maintenance).previewDelete(requestCaptor.capture());
+        verify(maintenance, never()).applyDelete(any(), any());
+        assertEquals(StorageMaintenanceScope.server("survival"), requestCaptor.getValue().scope(),
+                "Expected server delete scope");
+        assertEquals(Optional.of(PLAYER_ID), requestCaptor.getValue().playerUuid(), "Expected resolved player UUID");
+        assertEquals(Optional.of("Lorias_"), requestCaptor.getValue().playerName(), "Expected selected player name");
+        assertTrue(requestCaptor.getValue().timeRange().isPresent(), "Expected parsed time range");
+        assertEquals(Optional.of("3d"), requestCaptor.getValue().timeRangeInput(), "Expected raw time range");
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminDeleteHistoryAppliesQueuedAllPlayerWorldDeleteAfterConfirm() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        final StorageMaintenancePreview preview = deletePreview();
+        when(maintenance.previewDelete(any(StorageDeleteRequest.class))).thenReturn(preview);
+        when(maintenance.applyDelete(any(StorageDeleteRequest.class), eq(preview.confirmation())))
+                .thenReturn(new StorageMaintenanceResult(StorageMaintenanceOperation.WORLD_DELETE, 2L, 1L, 1L));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "deleteHistory", "server:survival", "world:old", "time:3d");
+        command.execute(sender, "confirm");
+
+        final ArgumentCaptor<StorageDeleteRequest> requestCaptor =
+                ArgumentCaptor.forClass(StorageDeleteRequest.class);
+        verify(maintenance).applyDelete(requestCaptor.capture(), eq(preview.confirmation()));
+        assertEquals(StorageMaintenanceScope.world("survival", "old"), requestCaptor.getValue().scope(),
+                "Expected world delete scope");
+        assertTrue(requestCaptor.getValue().playerUuid().isEmpty(), "Expected all-player delete");
+        assertTrue(requestCaptor.getValue().timeRange().isPresent(), "Expected all-player time range to be allowed");
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminDeleteHistoryDefaultsWorldScopeToExecutorCurrentServer() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
+        final AdminStorageMaintenance maintenance = prepareTransferMaintenance(context, sender);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
+        when(context.server().isProxy()).thenReturn(true);
+        when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("minigames"));
+        when(maintenance.previewDelete(any(StorageDeleteRequest.class))).thenReturn(deletePreview());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "deleteHistory", "world:old", "time:3d");
+
+        final ArgumentCaptor<StorageDeleteRequest> requestCaptor =
+                ArgumentCaptor.forClass(StorageDeleteRequest.class);
+        verify(maintenance).previewDelete(requestCaptor.capture());
+        assertEquals(StorageMaintenanceScope.world("minigames", "old"), requestCaptor.getValue().scope(),
+                "Expected deleteHistory world scope to use executor current server");
+    }
+
+    @Test
+    void adminDeleteHistoryRejectsUnknownPlayerBeforePreview() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance maintenance = mock(AdminStorageMaintenance.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(sender.getName()).thenReturn("Console");
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.of(maintenance));
+        when(context.storage().getUuid("Missing")).thenReturn(Optional.empty());
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "deleteHistory", "Missing", "server:survival");
+
+        verify(maintenance, never()).previewDelete(any());
+        verify(sender).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminDeleteHistoryRejectsUnsupportedRuntimeAndStorage() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(false);
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "deleteHistory", "Lorias_", "server:survival");
+
+        verify(context.storage(), never()).getUuid(anyString());
+
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.empty());
+        command.execute(sender, "deleteHistory", "Lorias_", "server:survival");
+
+        verify(context.storage(), never()).getUuid(anyString());
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminDeleteHistoryRequiresAdminPermission() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(false);
+
+        new LoriTimeAdminCommand(context.plugin(), context.localization())
+                .execute(sender, "deleteHistory", "Lorias_", "server:survival");
+
+        verify(context.storage(), never()).getUuid(anyString());
+        verify(sender).sendMessage(any(TextComponent.class));
     }
 
     @Test
@@ -749,9 +871,11 @@ class SenderRoleCommandTest {
     @Test
     void modifyCommandRoutesBackendWorldOnlyAddMutation() throws StorageException {
         final CommandContext context = new CommandContext();
-        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
         final TimeParser parser = mock(TimeParser.class);
         prepareMutation(context, sender);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
+        when(sender.getName()).thenReturn("Lorias_");
         when(context.server().getLocalServerName()).thenReturn(Optional.of("standalone-one"));
         when(context.storage().getTime(PLAYER_ID, TimeScope.world("standalone-one", "arena"))).thenReturn(OptionalLong.of(5L));
         when(parser.parseToSeconds("12")).thenReturn(OptionalLong.of(12L));
@@ -760,14 +884,16 @@ class SenderRoleCommandTest {
                 .execute(sender, "add", "Lorias_", "12", "world:arena");
 
         verify(context.storage()).addTime(new ManualTimeAdjustment(PLAYER_ID, 12L,
-                TimeEntryReason.MANUAL_ADJUSTMENT, (UUID) null, "CONSOLE", TimeScope.world("standalone-one", "arena")));
+                TimeEntryReason.MANUAL_ADJUSTMENT, PLAYER_ID, "Lorias_", TimeScope.world("standalone-one", "arena")));
     }
 
     @Test
     void modifyCommandRoutesProxyWorldOnlyResetMutation() throws StorageException {
         final CommandContext context = new CommandContext();
-        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final CommonPlayerSender sender = mock(CommonPlayerSender.class);
         prepareMutation(context, sender);
+        when(sender.getUniqueId()).thenReturn(PLAYER_ID);
+        when(sender.getName()).thenReturn("Lorias_");
         when(context.server().isProxy()).thenReturn(true);
         when(context.server().getCurrentServer(PLAYER_ID)).thenReturn(Optional.of("minigames"));
         when(context.storage().getTime(PLAYER_ID, TimeScope.world("minigames", "arena"))).thenReturn(OptionalLong.of(5L));
@@ -775,7 +901,7 @@ class SenderRoleCommandTest {
         modifyCommand(context).execute(sender, "reset", "Lorias_", "world:arena");
 
         verify(context.storage()).addTime(new ManualTimeAdjustment(PLAYER_ID, -5L,
-                TimeEntryReason.MANUAL_ADJUSTMENT, (UUID) null, "CONSOLE", TimeScope.world("minigames", "arena")));
+                TimeEntryReason.MANUAL_ADJUSTMENT, PLAYER_ID, "Lorias_", TimeScope.world("minigames", "arena")));
     }
 
     @Test
@@ -845,6 +971,12 @@ class SenderRoleCommandTest {
                         StorageMaintenanceScope.server("target"))),
                 null, 2L, 1L, 1L, true, List.of("target/world"), true, Optional.of(PLAYER_ID),
                 Optional.of("Lorias_"), Optional.empty(), Optional.empty(), "fingerprint");
+    }
+
+    private StorageMaintenancePreview deletePreview() {
+        return new StorageMaintenancePreview(StorageMaintenanceOperation.SERVER_DELETE, List.of(),
+                StorageMaintenanceScope.server("survival"), 2L, 1L, 1L, false, List.of(), true,
+                Optional.of(PLAYER_ID), Optional.of("Lorias_"), Optional.empty(), Optional.empty(), "delete");
     }
 
     private LoriTimeModifyCommand modifyCommand(final CommandContext context) {

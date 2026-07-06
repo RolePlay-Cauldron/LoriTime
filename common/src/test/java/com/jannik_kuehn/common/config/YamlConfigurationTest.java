@@ -184,6 +184,7 @@ class YamlConfigurationTest {
         assertEquals("custom second", migrated.getString("messages.unit.second.singular"));
         assertTrue(migrated.containsKey("messages.message.command.loritime.usage"));
         assertTrue(migrated.containsKey("messages.message.command.loritimeadmin.transfer.warning"));
+        assertTrue(migrated.containsKey("messages.message.command.loritimeadmin.deleteHistory.warning"));
     }
 
     @Test

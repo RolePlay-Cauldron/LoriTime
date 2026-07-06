@@ -51,6 +51,7 @@ public class LoriTimeAdminCommand implements CommonCommand {
                 .register(AdminAction.INFO, "info")
                 .register(AdminAction.UPDATE, "update")
                 .register(AdminAction.TRANSFER, "transfer")
+                .register(AdminAction.DELETE_HISTORY, "deleteHistory")
                 .register(AdminAction.CONFIRM, "confirm");
         this.actions = new LoriTimeAdminActions(plugin, localization, this::usage);
     }
@@ -83,6 +84,7 @@ public class LoriTimeAdminCommand implements CommonCommand {
             case INFO -> actions.info(sender, subCommandArgs);
             case UPDATE -> actions.update(sender, subCommandArgs);
             case TRANSFER -> actions.transfer(sender, subCommandArgs);
+            case DELETE_HISTORY -> actions.deleteHistory(sender, subCommandArgs);
             case CONFIRM -> actions.confirm(sender, subCommandArgs);
         }
     }
@@ -104,6 +106,9 @@ public class LoriTimeAdminCommand implements CommonCommand {
         }
         if (router.find(args[0]).filter(action -> action == AdminAction.TRANSFER).isPresent()) {
             return actions.completeTransfer(source, Arrays.copyOfRange(args, 1, args.length));
+        }
+        if (router.find(args[0]).filter(action -> action == AdminAction.DELETE_HISTORY).isPresent()) {
+            return actions.completeDeleteHistory(source, Arrays.copyOfRange(args, 1, args.length));
         }
         return List.of();
     }
@@ -156,6 +161,10 @@ public class LoriTimeAdminCommand implements CommonCommand {
          * Transfers one player's scoped storage data.
          */
         TRANSFER,
+        /**
+         * Deletes scoped storage history.
+         */
+        DELETE_HISTORY,
         /**
          * Confirms a pending administrative action.
          */
