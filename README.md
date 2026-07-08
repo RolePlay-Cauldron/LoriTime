@@ -15,7 +15,7 @@ LoriTime tracks how long players are connected to a Minecraft server or network.
 - Stores data in SQLite, MySQL, or MariaDB.
 - Includes AFK handling, configurable commands, placeholders, localization, backups, and update checks.
 
-> LoriTime 2 development builds require Java 21. See [Compatibility](docs/Compatibility.md) for the full platform matrix.
+> LoriTime 2 development builds require Java 21. See [Compatibility](https://roleplay-cauldron.github.io/loritime/reference/compatibility/) for the full platform matrix.
 
 ## Installation
 
@@ -25,4 +25,4 @@ LoriTime tracks how long players are connected to a Minecraft server or network.
 4. Configure `config.yml`, `commands.yml`, and localization files as needed.
 5. Start the server again.
 
-For proxy networks, run Velocity as `master` and Paper/Folia backends as `slave` when the proxy should own canonical storage. See [Setup](docs/Setup.md) and [Storage](docs/Storage.md) for the exact configuration.
+For proxy networks, run Velocity as `master` and Paper/Folia backends as `slave` when the proxy should own canonical storage. See [Setup](https://roleplay-cauldron.github.io/loritime/guide/setup/) and [Storage](https://roleplay-cauldron.github.io/loritime/reference/storage/) for the exact configuration.
