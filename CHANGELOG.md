@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [2.1.0] - 2026-07-09
+### Added
 - New `lta` subcommand
   - `transfer` to transfer playtime between servers and worlds
   - `deleteHistory` to delete playtime history for a player on specific worlds or servers
