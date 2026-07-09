@@ -16,8 +16,11 @@ import com.jannik_kuehn.common.player.LoriTimePlayerConverter;
 import com.jannik_kuehn.common.player.TrackedLoriTimePlayer;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
 import com.jannik_kuehn.common.scheduler.PluginTask;
+import com.jannik_kuehn.common.storage.DataStorageManager;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
+import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
+import com.jannik_kuehn.common.storage.database.DatabaseStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
@@ -755,6 +758,104 @@ class SenderRoleCommandTest {
     }
 
     @Test
+    @SuppressWarnings("PMD.CloseResource")
+    void adminStorageTransferPreviewsAndQueuesConfirmation() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance source = prepareStorageTypeTransfer(context, sender, "mysql");
+        final AdminStorageMaintenance target = mock(AdminStorageMaintenance.class);
+        final DataStorageManager.StorageTransferTarget transferTarget = storageTransferTarget(target);
+        when(context.plugin().getDataStorageManager().createStorageTransferTarget("sqlite")).thenReturn(transferTarget);
+        when(source.previewStorageTransferTo(target)).thenReturn(storageTransferPreview(false));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "storage", "transfer", "sqlite");
+
+        verify(context.plugin().getAccumulator()).flushOnlineTimeCache();
+        verify(source).previewStorageTransferTo(target);
+        verify(source, never()).applyStorageTransferTo(any(), any());
+        verify(transferTarget.databaseStorage()).shutdown();
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    @SuppressWarnings("PMD.CloseResource")
+    void adminStorageTransferConfirmRecreatesTargetAndAppliesOriginalConfirmation() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance source = prepareStorageTypeTransfer(context, sender, "mysql");
+        final AdminStorageMaintenance previewTarget = mock(AdminStorageMaintenance.class);
+        final AdminStorageMaintenance confirmTarget = mock(AdminStorageMaintenance.class);
+        final DataStorageManager.StorageTransferTarget previewTransferTarget = storageTransferTarget(previewTarget);
+        final DataStorageManager.StorageTransferTarget confirmTransferTarget = storageTransferTarget(confirmTarget);
+        when(context.plugin().getDataStorageManager().createStorageTransferTarget("sqlite"))
+                .thenReturn(previewTransferTarget, confirmTransferTarget);
+        final StorageMaintenancePreview preview = storageTransferPreview(false);
+        when(source.previewStorageTransferTo(previewTarget)).thenReturn(preview);
+        when(source.applyStorageTransferTo(confirmTarget, preview.confirmation()))
+                .thenReturn(new StorageMaintenanceResult(StorageMaintenanceOperation.STORAGE_TYPE_TRANSFER, 2L, 1L, 1L));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "storage", "transfer", "sqlite");
+        command.execute(sender, "confirm");
+
+        verify(context.plugin().getAccumulator(), times(2)).flushOnlineTimeCache();
+        verify(source).applyStorageTransferTo(confirmTarget, preview.confirmation());
+        verify(previewTransferTarget.databaseStorage()).shutdown();
+        verify(confirmTransferTarget.databaseStorage()).shutdown();
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminStorageTransferRejectsInvalidTargetsBeforeTargetCreation() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        prepareStorageTypeTransfer(context, sender, "mysql");
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "storage", "transfer", "postgres");
+        command.execute(sender, "storage", "transfer", "mysql");
+        command.execute(sender, "storage", "transfer", "mariadb");
+
+        verify(context.plugin().getDataStorageManager(), never()).createStorageTransferTarget(anyString());
+        verify(context.plugin().getAccumulator(), never()).flushOnlineTimeCache();
+        verify(sender, atLeast(3)).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    @SuppressWarnings("PMD.CloseResource")
+    void adminStorageTransferRejectsNonEmptyTargetWithoutConfirmation() throws Exception {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        final AdminStorageMaintenance source = prepareStorageTypeTransfer(context, sender, "mysql");
+        final AdminStorageMaintenance target = mock(AdminStorageMaintenance.class);
+        final DataStorageManager.StorageTransferTarget transferTarget = storageTransferTarget(target);
+        when(context.plugin().getDataStorageManager().createStorageTransferTarget("sqlite")).thenReturn(transferTarget);
+        when(source.previewStorageTransferTo(target)).thenReturn(storageTransferPreview(true));
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        command.execute(sender, "storage", "transfer", "sqlite");
+        command.execute(sender, "confirm");
+
+        verify(source, never()).applyStorageTransferTo(any(), any());
+        verify(sender, atLeastOnce()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void adminStorageCompletesTransferTargets() {
+        final CommandContext context = new CommandContext();
+        final CommonConsoleSender sender = mock(CommonConsoleSender.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        final LoriTimeAdminCommand command = prepareAdminCommand(context, sender);
+
+        assertEquals(List.of("transfer"), command.handleTabComplete(sender, "storage", ""),
+                "storage subcommand should complete transfer");
+        assertEquals(List.of("sqlite", "mysql", "mariadb"),
+                command.handleTabComplete(sender, "storage", "transfer", ""),
+                "storage transfer should complete supported target storage types");
+    }
+
+    @Test
     void adminDeleteHistoryRequiresAdminPermission() throws Exception {
         final CommandContext context = new CommandContext();
         final CommonConsoleSender sender = mock(CommonConsoleSender.class);
@@ -965,6 +1066,29 @@ class SenderRoleCommandTest {
         return maintenance;
     }
 
+    @SuppressWarnings("PMD.CloseResource")
+    private AdminStorageMaintenance prepareStorageTypeTransfer(final CommandContext context,
+                                                               final CommonSender sender,
+                                                               final String sourceMethod) {
+        final AdminStorageMaintenance maintenance = mock(AdminStorageMaintenance.class);
+        final DataStorageManager dataStorageManager = mock(DataStorageManager.class);
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(sender.hasPermission("loritime.admin")).thenReturn(true);
+        when(context.plugin().ownsCanonicalStorage()).thenReturn(true);
+        when(context.plugin().getAdminStorageMaintenance()).thenReturn(Optional.of(maintenance));
+        when(context.plugin().getDataStorageManager()).thenReturn(dataStorageManager);
+        when(context.plugin().getAccumulator()).thenReturn(accumulator);
+        when(context.plugin().getConfig().getString("storageMethod", "sqlite")).thenReturn(sourceMethod);
+        return maintenance;
+    }
+
+    private DataStorageManager.StorageTransferTarget storageTransferTarget(final AdminStorageMaintenance maintenance)
+            throws StorageException {
+        final DatabaseStorage databaseStorage = mock(DatabaseStorage.class);
+        doNothing().when(databaseStorage).shutdown();
+        return new DataStorageManager.StorageTransferTarget(databaseStorage, maintenance);
+    }
+
     private StorageMaintenancePreview transferPreview() {
         return new StorageMaintenancePreview(StorageMaintenanceOperation.SERVER_TRANSFER,
                 List.of(new StorageTransferMapping(StorageMaintenanceScope.server("survival"),
@@ -977,6 +1101,14 @@ class SenderRoleCommandTest {
         return new StorageMaintenancePreview(StorageMaintenanceOperation.SERVER_DELETE, List.of(),
                 StorageMaintenanceScope.server("survival"), 2L, 1L, 1L, false, List.of(), true,
                 Optional.of(PLAYER_ID), Optional.of("Lorias_"), Optional.empty(), Optional.empty(), "delete");
+    }
+
+    private StorageMaintenancePreview storageTransferPreview(final boolean targetDataExists) {
+        return new StorageMaintenancePreview(StorageMaintenanceOperation.STORAGE_TYPE_TRANSFER,
+                List.of(new StorageTransferMapping(StorageMaintenanceScope.storage(),
+                        StorageMaintenanceScope.storage())),
+                null, 2L, 1L, 1L, targetDataExists, List.of(), true, Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), "storage-transfer");
     }
 
     private LoriTimeModifyCommand modifyCommand(final CommandContext context) {
@@ -1006,6 +1138,7 @@ class SenderRoleCommandTest {
             when(server().isProxy()).thenReturn(false);
             when(server().getLocalServerName()).thenReturn(Optional.of("default"));
             when(plugin().getConfig()).thenReturn(mock(com.jannik_kuehn.common.config.Configuration.class));
+            when(plugin().getDataStorageManager()).thenReturn(mock(DataStorageManager.class));
             when(plugin().getConfig().getBoolean(anyString())).thenReturn(false);
             when(plugin().getConfig().getInt("general.debugAutoDisableTime", 30)).thenReturn(-1);
             when(localization().getRawMessage(anyString())).thenReturn("[time]");

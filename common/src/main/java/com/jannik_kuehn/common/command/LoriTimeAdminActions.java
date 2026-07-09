@@ -13,9 +13,12 @@ import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonSender;
 import com.jannik_kuehn.common.scheduler.PluginTask;
+import com.jannik_kuehn.common.storage.DataStorageManager;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
+import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
+import com.jannik_kuehn.common.storage.model.StorageMaintenanceConfirmation;
 import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceResult;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceScope;
@@ -87,6 +90,16 @@ final class LoriTimeAdminActions {
      * Target world short flag.
      */
     private static final String SHORT_TARGET_WORLD_PREFIX = "tw:";
+
+    /**
+     * Storage transfer subcommand token.
+     */
+    private static final String STORAGE_TRANSFER_TOKEN = "transfer";
+
+    /**
+     * Supported storage transfer targets.
+     */
+    private static final List<String> STORAGE_TRANSFER_TARGETS = List.of("sqlite", "mysql", "mariadb");
 
     /**
      * LoriTime plugin instance.
@@ -241,6 +254,50 @@ final class LoriTimeAdminActions {
             log.error("Storage transfer failed.", ex);
             CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
                     "message.command.loritimeadmin.transfer.failure");
+        }
+    }
+
+    /**
+     * Handles storage-level admin maintenance subcommands.
+     *
+     * @param sender command sender
+     * @param args   subcommand arguments
+     */
+    /* default */ void storage(final CommonSender sender, final String... args) {
+        final ParsedStorageTransfer parsed = parseStorageTransfer(sender, args);
+        if (parsed == null) {
+            return;
+        }
+        if (!plugin.ownsCanonicalStorage()) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.storageMaintenance.unsupported");
+            return;
+        }
+        final Optional<AdminStorageMaintenance> optionalMaintenance = plugin.getAdminStorageMaintenance();
+        if (optionalMaintenance.isEmpty()) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.storageMaintenance.unsupported");
+            return;
+        }
+        try {
+            flushActiveOnlineTime();
+            try (DataStorageManager.StorageTransferTarget target = plugin.getDataStorageManager()
+                    .createStorageTransferTarget(parsed.target())) {
+                final StorageMaintenancePreview preview = optionalMaintenance.get()
+                        .previewStorageTransferTo(target.maintenance());
+                if (preview.targetDataExists()) {
+                    CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                            "message.command.loritimeadmin.storage.transfer.targetNotEmpty");
+                    return;
+                }
+                queuePendingAction(sender, "storage transfer",
+                        () -> applyStorageTransfer(sender, parsed.target(), preview.confirmation()));
+                sendStorageTransferPreview(sender, parsed.source(), parsed.target(), preview);
+            }
+        } catch (final StorageException | RuntimeException ex) {
+            log.error("Storage type transfer preview failed.", ex);
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.storage.transfer.failure");
         }
     }
 
@@ -428,6 +485,27 @@ final class LoriTimeAdminActions {
         addMissingFlagSuggestion(suggestions, previousArgs, TARGET_WORLD_PREFIX);
         addMissingFlagSuggestion(suggestions, previousArgs, CommandScopes.TIME_PREFIX);
         return CommandCompletions.startsWith(suggestions, argument);
+    }
+
+    /**
+     * Completes storage maintenance command arguments.
+     *
+     * @param sender command sender
+     * @param args   current storage arguments
+     * @return completions
+     */
+    /* default */ List<String> completeStorage(final CommonSender sender, final String... args) {
+        if (!sender.hasPermission("loritime.admin")) {
+            return List.of();
+        }
+        final String argument = args.length == 0 ? "" : args[args.length - 1];
+        if (args.length <= 1) {
+            return CommandCompletions.startsWith(List.of(STORAGE_TRANSFER_TOKEN), argument);
+        }
+        if (args.length == 2 && STORAGE_TRANSFER_TOKEN.equalsIgnoreCase(args[0])) {
+            return CommandCompletions.startsWith(STORAGE_TRANSFER_TARGETS, argument);
+        }
+        return List.of();
     }
 
     /**
@@ -690,6 +768,35 @@ final class LoriTimeAdminActions {
                 .replace("[players]", Long.toString(result.affectedPlayers()))));
     }
 
+    private void sendStorageTransferPreview(final CommonSender sender,
+                                            final String source,
+                                            final String target,
+                                            final StorageMaintenancePreview preview) {
+        final Component previewMessage = localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.storage.transfer.preview")
+                .replace("[source]", source)
+                .replace("[target]", target)
+                .replace("[sessions]", Long.toString(preview.affectedSessions()))
+                .replace("[adjustments]", Long.toString(preview.affectedAdjustments()))
+                .replace("[players]", Long.toString(preview.affectedPlayers())));
+        sender.sendMessage(previewMessage.append(Component.text(" [Confirm]")
+                .clickEvent(ClickEvent.suggestCommand(CONFIRM_COMMAND))
+                .hoverEvent(HoverEvent.showText(Component.text("Suggest " + CONFIRM_COMMAND)))));
+        sender.sendMessage(localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.storage.transfer.warning")));
+    }
+
+    private void sendStorageTransferSuccess(final CommonSender sender,
+                                            final String target,
+                                            final StorageMaintenanceResult result) {
+        sender.sendMessage(localization.formatTextComponent(localization
+                .getRawMessage("message.command.loritimeadmin.storage.transfer.success")
+                .replace("[target]", target)
+                .replace("[sessions]", Long.toString(result.affectedSessions()))
+                .replace("[adjustments]", Long.toString(result.affectedAdjustments()))
+                .replace("[players]", Long.toString(result.affectedPlayers()))));
+    }
+
     private void sendDeleteHistoryPreview(final CommonSender sender, final StorageMaintenancePreview preview) {
         final Component previewMessage = localization.formatTextComponent(localization
                 .getRawMessage("message.command.loritimeadmin.deleteHistory.preview")
@@ -787,6 +894,61 @@ final class LoriTimeAdminActions {
         if (previousArgs.stream().noneMatch(value -> value.regionMatches(true, 0, flag, 0, flag.length()))) {
             suggestions.add(flag);
         }
+    }
+
+    private ParsedStorageTransfer parseStorageTransfer(final CommonSender sender, final String... args) {
+        if (args.length != 2 || !STORAGE_TRANSFER_TOKEN.equalsIgnoreCase(args[0])) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.storage.transfer.usage");
+            return null;
+        }
+        final String target = args[1].toLowerCase(Locale.ROOT);
+        if (!STORAGE_TRANSFER_TARGETS.contains(target)) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.storage.transfer.unknownTarget");
+            return null;
+        }
+        final String source = plugin.getConfig().getString("storageMethod", "sqlite").toLowerCase(Locale.ROOT);
+        if (source.equals(target)) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.storage.transfer.sameTarget");
+            return null;
+        }
+        if (isSqlStorage(source) && isSqlStorage(target)) {
+            CommandMessages.send(localization, plugin.getLanguageSelector(), sender,
+                    "message.command.loritimeadmin.storage.transfer.sqlBridgeRequired");
+            return null;
+        }
+        return new ParsedStorageTransfer(source, target);
+    }
+
+    private boolean isSqlStorage(final String storageMethod) {
+        return "mysql".equals(storageMethod) || "mariadb".equals(storageMethod);
+    }
+
+    private void applyStorageTransfer(final CommonSender sender,
+                                      final String target,
+                                      final StorageMaintenanceConfirmation confirmation) throws StorageException {
+        final Optional<AdminStorageMaintenance> optionalMaintenance = plugin.getAdminStorageMaintenance();
+        if (optionalMaintenance.isEmpty()) {
+            throw new StorageException("Storage maintenance is not supported by the active storage");
+        }
+        flushActiveOnlineTime();
+        try (DataStorageManager.StorageTransferTarget transferTarget = plugin.getDataStorageManager()
+                .createStorageTransferTarget(target)) {
+            final StorageMaintenanceResult result = optionalMaintenance.get()
+                    .applyStorageTransferTo(transferTarget.maintenance(), confirmation);
+            sendStorageTransferSuccess(sender, target, result);
+        }
+    }
+
+    @SuppressWarnings("PMD.CloseResource")
+    private void flushActiveOnlineTime() throws StorageException {
+        final TimeAccumulator accumulator = plugin.getAccumulator();
+        if (accumulator == null) {
+            throw new StorageException("No active time accumulator is available");
+        }
+        accumulator.flushOnlineTimeCache();
     }
 
     private boolean hasUnexpectedArgs(final CommonSender sender, final String... args) {
@@ -980,6 +1142,9 @@ final class LoriTimeAdminActions {
             }
             return StorageDeleteRequest.allPlayers(scope, timeRange, timeRangeInput);
         }
+    }
+
+    private record ParsedStorageTransfer(String source, String target) {
     }
 
     private record PendingAdminAction(String description,

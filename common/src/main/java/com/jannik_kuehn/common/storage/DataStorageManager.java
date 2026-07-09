@@ -11,6 +11,7 @@ import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.database.DatabaseStorage;
 import com.jannik_kuehn.common.storage.database.UnifiedDatabaseStorage;
+import com.jannik_kuehn.common.storage.database.migration.DatabaseMigrationPreflight;
 import com.jannik_kuehn.common.storage.database.table.ManualAdjustmentTable;
 import com.jannik_kuehn.common.storage.database.table.PlayerTable;
 import com.jannik_kuehn.common.storage.database.table.ServerTable;
@@ -222,15 +223,7 @@ public class DataStorageManager {
     private void loadDatabaseStorage() throws StorageException {
         final DatabaseStorage dbStorage = new DatabaseStorage(loggerFactory, loriTime.getConfig(), dataFolder);
         dbStorage.initializeRuntime();
-
-        final PlayerTable playerTable = new PlayerTable(dbStorage.getTablePrefix() + "_player");
-        final ServerTable serverTable = new ServerTable(dbStorage.getTablePrefix() + "_server");
-        final WorldTable worldTable = new WorldTable(dbStorage.getTablePrefix() + "_world", serverTable);
-        final TimeTable timeTable = new TimeTable(dbStorage.getTablePrefix() + "_time", playerTable, dbStorage.getDialect());
-        final ManualAdjustmentTable adjustmentTable = new ManualAdjustmentTable(dbStorage.getTablePrefix() + "_time_adjustment", playerTable);
-
-        final UnifiedDatabaseStorage nameAndTimeStorage = new UnifiedDatabaseStorage(dbStorage.getProvider(), playerTable,
-                serverTable, worldTable, timeTable, adjustmentTable, dbStorage.getDialect());
+        final UnifiedDatabaseStorage nameAndTimeStorage = createUnifiedDatabaseStorage(dbStorage);
         final AccumulatingTimeStorage accumulatingStorage = new AccumulatingTimeStorage(
                 loriTime.getLoggerFactory().create(AccumulatingTimeStorage.class), nameAndTimeStorage);
         this.storage = nameAndTimeStorage;
@@ -299,5 +292,44 @@ public class DataStorageManager {
      */
     public StorageMode getStorageMode() {
         return storageMode;
+    }
+
+    /**
+     * Creates a temporary admin maintenance target for a storage-type transfer.
+     *
+     * @param storageMethod target storage method
+     * @return initialized transfer target
+     * @throws StorageException if the target cannot be initialized
+     */
+    public StorageTransferTarget createStorageTransferTarget(final String storageMethod) throws StorageException {
+        final DatabaseStorage dbStorage = new DatabaseStorage(loggerFactory, loriTime.getConfig(), dataFolder,
+                loriTime.getConfig().getString("data.tablePrefix", "loritime"), storageMethod);
+        new DatabaseMigrationPreflight(dbStorage, loggerFactory.create(DatabaseMigrationPreflight.class)).migrateIfNecessary();
+        return new StorageTransferTarget(dbStorage, createUnifiedDatabaseStorage(dbStorage));
+    }
+
+    private UnifiedDatabaseStorage createUnifiedDatabaseStorage(final DatabaseStorage dbStorage) {
+        final PlayerTable playerTable = new PlayerTable(dbStorage.getTablePrefix() + "_player");
+        final ServerTable serverTable = new ServerTable(dbStorage.getTablePrefix() + "_server");
+        final WorldTable worldTable = new WorldTable(dbStorage.getTablePrefix() + "_world", serverTable);
+        final TimeTable timeTable = new TimeTable(dbStorage.getTablePrefix() + "_time", playerTable, dbStorage.getDialect());
+        final ManualAdjustmentTable adjustmentTable = new ManualAdjustmentTable(dbStorage.getTablePrefix() + "_time_adjustment", playerTable);
+        return new UnifiedDatabaseStorage(dbStorage.getProvider(), playerTable,
+                serverTable, worldTable, timeTable, adjustmentTable, dbStorage.getDialect());
+    }
+
+    /**
+     * Temporary storage transfer target.
+     *
+     * @param databaseStorage backing database storage
+     * @param maintenance     admin maintenance implementation
+     */
+    public record StorageTransferTarget(DatabaseStorage databaseStorage,
+                                        AdminStorageMaintenance maintenance) implements AutoCloseable {
+
+        @Override
+        public void close() throws StorageException {
+            databaseStorage.shutdown();
+        }
     }
 }
