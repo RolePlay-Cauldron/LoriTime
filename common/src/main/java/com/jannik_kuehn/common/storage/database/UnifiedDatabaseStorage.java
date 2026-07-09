@@ -70,6 +70,11 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     private static final String SYSTEM_ACTOR = "SYSTEM";
 
     /**
+     * Rows copied per batch during full storage-type transfer.
+     */
+    private static final int STORAGE_TRANSFER_BATCH_SIZE = 1_000;
+
+    /**
      * Database connection provider.
      */
     private final LoriTimeConnectionProvider provider;
@@ -702,6 +707,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                     validateConfirmation(preview, confirmation);
                     targetStorage.rejectNonEmptyStorageTypeTarget(targetConnection);
                     targetStorage.importStorageSnapshot(targetConnection, exportStorageSnapshot(sourceConnection));
+                    targetStorage.copySnapshotHistory(sourceConnection, this, targetConnection);
                     targetConnection.commit();
                     return new StorageMaintenanceResult(preview.operation(), preview.affectedSessions(),
                             preview.affectedAdjustments(), preview.affectedPlayers());
@@ -1002,40 +1008,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             }
         }
 
-        final List<SessionRow> sessions = new ArrayList<>();
-        try (PreparedStatement select = connection.prepareStatement(
-                "SELECT p.`uuid`, s.`server`, w.`world`, t.`join_time`, t.`leave_time`, t.`reason` "
-                        + "FROM `" + timeTableName + "` t "
-                        + "JOIN `" + playerTableName + "` p ON p.`id` = t.`player_id` "
-                        + "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
-                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` ORDER BY t.`id`");
-             ResultSet result = select.executeQuery()) {
-            while (result.next()) {
-                sessions.add(new SessionRow(result.getBytes("uuid"), result.getString("server"),
-                        result.getString("world"), result.getObject("join_time"),
-                        result.getObject("leave_time"), result.getString("reason")));
-            }
-        }
-
-        final List<AdjustmentRow> adjustments = new ArrayList<>();
-        try (PreparedStatement select = connection.prepareStatement(
-                "SELECT p.`uuid`, a.`scope_type`, ss.`server` AS scope_server, ws.`server` AS world_server, "
-                        + "w.`world`, a.`amount_seconds`, a.`reason`, a.`actor_uuid`, a.`actor_name`, a.`created_at` "
-                        + "FROM `" + adjustmentTableName + "` a "
-                        + "JOIN `" + playerTableName + "` p ON p.`id` = a.`player_id` "
-                        + "LEFT JOIN `" + serverTableName + "` ss ON ss.`id` = a.`server_id` "
-                        + "LEFT JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
-                        + "LEFT JOIN `" + serverTableName + "` ws ON ws.`id` = w.`server_id` ORDER BY a.`id`");
-             ResultSet result = select.executeQuery()) {
-            while (result.next()) {
-                adjustments.add(new AdjustmentRow(result.getBytes("uuid"), result.getString("scope_type"),
-                        result.getString("scope_server"), result.getString("world_server"),
-                        result.getString("world"), result.getLong("amount_seconds"),
-                        result.getString("reason"), result.getBytes("actor_uuid"),
-                        result.getString("actor_name"), result.getObject("created_at")));
-            }
-        }
-        return new StorageSnapshot(players, servers, worlds, sessions, adjustments);
+        return new StorageSnapshot(players, servers, worlds);
     }
 
     private void importStorageSnapshot(final Connection connection, final StorageSnapshot snapshot)
@@ -1047,8 +1020,6 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         for (final WorldSnapshotRow world : snapshot.worlds()) {
             worldTable.ensureWorld(connection, world.server(), world.world());
         }
-        insertSnapshotSessions(connection, snapshot.sessions());
-        insertSnapshotAdjustments(connection, snapshot.adjustments());
     }
 
     private void insertSnapshotPlayers(final Connection connection, final List<PlayerRow> players) throws SQLException {
@@ -1110,6 +1081,74 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             }
             insert.executeBatch();
         }
+    }
+
+    private void copySnapshotHistory(final Connection sourceConnection,
+                                     final UnifiedDatabaseStorage sourceStorage,
+                                     final Connection targetConnection) throws SQLException {
+        long offset = 0L;
+        List<SessionRow> sessions;
+        do {
+            sessions = sourceStorage.readSnapshotSessions(sourceConnection, offset);
+            insertSnapshotSessions(targetConnection, sessions);
+            offset += sessions.size();
+        } while (sessions.size() == STORAGE_TRANSFER_BATCH_SIZE);
+
+        offset = 0L;
+        List<AdjustmentRow> adjustments;
+        do {
+            adjustments = sourceStorage.readSnapshotAdjustments(sourceConnection, offset);
+            insertSnapshotAdjustments(targetConnection, adjustments);
+            offset += adjustments.size();
+        } while (adjustments.size() == STORAGE_TRANSFER_BATCH_SIZE);
+    }
+
+    private List<SessionRow> readSnapshotSessions(final Connection connection, final long offset) throws SQLException {
+        final List<SessionRow> sessions = new ArrayList<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT p.`uuid`, s.`server`, w.`world`, t.`join_time`, t.`leave_time`, t.`reason` "
+                        + "FROM `" + timeTableName + "` t "
+                        + "JOIN `" + playerTableName + "` p ON p.`id` = t.`player_id` "
+                        + "JOIN `" + worldTableName + "` w ON w.`id` = t.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "ORDER BY t.`id` LIMIT ? OFFSET ?")) {
+            select.setInt(1, STORAGE_TRANSFER_BATCH_SIZE);
+            select.setLong(2, offset);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    sessions.add(new SessionRow(result.getBytes("uuid"), result.getString("server"),
+                            result.getString("world"), result.getObject("join_time"),
+                            result.getObject("leave_time"), result.getString("reason")));
+                }
+            }
+        }
+        return sessions;
+    }
+
+    private List<AdjustmentRow> readSnapshotAdjustments(final Connection connection, final long offset) throws SQLException {
+        final List<AdjustmentRow> adjustments = new ArrayList<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT p.`uuid`, a.`scope_type`, ss.`server` AS scope_server, ws.`server` AS world_server, "
+                        + "w.`world`, a.`amount_seconds`, a.`reason`, a.`actor_uuid`, a.`actor_name`, a.`created_at` "
+                        + "FROM `" + adjustmentTableName + "` a "
+                        + "JOIN `" + playerTableName + "` p ON p.`id` = a.`player_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ss ON ss.`id` = a.`server_id` "
+                        + "LEFT JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "LEFT JOIN `" + serverTableName + "` ws ON ws.`id` = w.`server_id` "
+                        + "ORDER BY a.`id` LIMIT ? OFFSET ?")) {
+            select.setInt(1, STORAGE_TRANSFER_BATCH_SIZE);
+            select.setLong(2, offset);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    adjustments.add(new AdjustmentRow(result.getBytes("uuid"), result.getString("scope_type"),
+                            result.getString("scope_server"), result.getString("world_server"),
+                            result.getString("world"), result.getLong("amount_seconds"),
+                            result.getString("reason"), result.getBytes("actor_uuid"),
+                            result.getString("actor_name"), result.getObject("created_at")));
+                }
+            }
+        }
+        return adjustments;
     }
 
     private StorageMaintenancePreview buildDeletePreview(final Connection connection,
@@ -2052,9 +2091,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
 
     private record StorageSnapshot(List<PlayerRow> players,
                                    List<ServerRow> servers,
-                                   List<WorldSnapshotRow> worlds,
-                                   List<SessionRow> sessions,
-                                   List<AdjustmentRow> adjustments) {
+                                   List<WorldSnapshotRow> worlds) {
     }
 
     private record PlayerRow(byte[] uuid, String name, Object lastSeen) {

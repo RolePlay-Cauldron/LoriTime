@@ -50,6 +50,11 @@ public class DatabaseStorage {
     private final File dataFolder;
 
     /**
+     * Explicit storage method override, when this storage is not the active runtime storage.
+     */
+    private final String storageMethod;
+
+    /**
      * The connection provider used for database operations.
      */
     private LoriTimeConnectionProvider provider;
@@ -80,11 +85,26 @@ public class DatabaseStorage {
      */
     public DatabaseStorage(final LoggerFactory loggerFactory, final Configuration config,
                            final File dataFolder, final String tablePrefix) {
+        this(loggerFactory, config, dataFolder, tablePrefix, null);
+    }
+
+    /**
+     * Creates a database storage using an explicit storage method and table prefix.
+     *
+     * @param loggerFactory the {@link LoggerFactory} instance
+     * @param config        the {@link Configuration} instance
+     * @param dataFolder    the data folder of the plugin
+     * @param tablePrefix   table prefix to use for this storage instance
+     * @param storageMethod storage method to use instead of the configured active method
+     */
+    public DatabaseStorage(final LoggerFactory loggerFactory, final Configuration config,
+                           final File dataFolder, final String tablePrefix, final String storageMethod) {
         this.loggerFactory = loggerFactory;
         this.log = loggerFactory.create(DatabaseStorage.class);
         this.config = config;
         this.tablePrefix = tablePrefix;
         this.dataFolder = dataFolder;
+        this.storageMethod = storageMethod;
     }
 
     /**
@@ -139,7 +159,7 @@ public class DatabaseStorage {
     }
 
     private String getConfiguredEngine() {
-        final String engineString = config.getString("storageMethod");
+        final String engineString = storageMethod == null ? config.getString("storageMethod") : storageMethod;
         if (engineString == null || engineString.isBlank()) {
             throw new IllegalArgumentException("Database engine configuration is missing");
         }

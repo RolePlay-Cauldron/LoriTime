@@ -784,6 +784,28 @@ class UnifiedDatabaseStorageTest {
     }
 
     @Test
+    void maintenanceStorageTypeTransferCopiesHistoryLargerThanBatch() throws Exception {
+        try (UnifiedDatabaseStorage source = storage();
+             UnifiedDatabaseStorage target = storage(targetDataFolder)) {
+
+            source.setPlayerName(PLAYER, "Lorias_");
+            for (int index = 0; index < 1_005; index++) {
+                source.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                        index * 2_000L, index * 2_000L + 1_000L, TimeEntryReason.PLAYER_LEAVE));
+                source.addTime(new ManualTimeAdjustment(PLAYER, 1L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
+                        TimeScope.server("survival")));
+            }
+
+            final StorageMaintenancePreview preview = source.previewStorageTransferTo(target);
+            source.applyStorageTransferTo(target, preview.confirmation());
+
+            assertEquals(1_005L, preview.affectedSessions(), "Expected all source sessions in preview");
+            assertEquals(1_005L, preview.affectedAdjustments(), "Expected all source adjustments in preview");
+            assertEquals(OptionalLong.of(2_010L), target.getTime(PLAYER), "Expected all batched history to transfer");
+        }
+    }
+
+    @Test
     void maintenanceStorageTypeTransferRejectsNonEmptyTarget() throws Exception {
         try (UnifiedDatabaseStorage source = storage();
              UnifiedDatabaseStorage target = storage(targetDataFolder)) {

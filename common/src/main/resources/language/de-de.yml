@@ -50,7 +50,7 @@ messages:
           self: '<#A4A4A4>Du hast <#50CBAB>[time] [scope][range] <#A4A4A4>gespielt.'
           other: '<#A4A4A4>Der Spieler <#50CBAB>[player] <#A4A4A4>hat <#50CBAB>[time] [scope][range] <#A4A4A4>gespielt.'
       loritimeadmin:
-        usage: '<#A4A4A4>Benutze <red>/ltmodify [add | set | reset] [player] [time] [server:<server>|s:<server>] [world:<world>|w:<world>] <#A4A4A4>um die Spielzeit zu ändern.<newline>Weitere Commands: <red>/loritimeadmin [reload | update | deleteUser | transfer | confirm]'
+        usage: '<#A4A4A4>Benutze <red>/ltmodify [add | set | reset] [player] [time] [server:<server>|s:<server>] [world:<world>|w:<world>] <#A4A4A4>um die Spielzeit zu ändern.<newline>Weitere Commands: <red>/loritimeadmin [reload | update | storage | transfer | deleteHistory | confirm]'
         missingUuid: '<#A4A4A4>Der Spieler <#50CBAB>[player] <#A4A4A4>ist unbekannt.'
         notTime: '<#A4A4A4>Das gegebene Zeitargument <#50CBAB>[argument] <#FF3232>hat ein ungültiges Format.'
         set:
@@ -79,6 +79,17 @@ messages:
           warning: '<#FF3232>WARNUNG: Dieser Transfer schreibt gespeicherte Verlaufsdaten um und kann von LoriTime nicht rueckgaengig gemacht werden. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
           success: '<#1AFA29>Transfer abgeschlossen: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
           failure: '<#FF3232>Speichertransfer fehlgeschlagen.'
+        storage:
+          transfer:
+            usage: '<#A4A4A4>Benutze <red>/loritimeadmin storage transfer [sqlite|mysql|mariadb] <#A4A4A4>um das Kopieren aller LoriTime-Daten in einen leeren Zielspeicher vorzubereiten.'
+            preview: '<#A4A4A4>Speichertransfer-Vorschau: <#50CBAB>[source] <#A4A4A4>nach <#50CBAB>[target]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>Sitzungen, <#50CBAB>[adjustments] <#A4A4A4>Anpassungen, <#50CBAB>[players] <#A4A4A4>Spieler. Nutze <red>/lta confirm <#A4A4A4>innerhalb von 15 Sekunden zum Anwenden.'
+            warning: '<#FF3232>WARNUNG: Der Zielspeicher muss leer sein. Erstelle und pruefe ein Backup, bevor du /lta confirm ausfuehrst.'
+            success: '<#1AFA29>Speichertransfer nach <#50CBAB>[target] <#1AFA29>abgeschlossen: <#50CBAB>[sessions] <#1AFA29>Sitzungen, <#50CBAB>[adjustments] <#1AFA29>Anpassungen, <#50CBAB>[players] <#1AFA29>Spieler.'
+            targetNotEmpty: '<#FF3232>Der Zielspeicher ist nicht leer. Nutze einen frischen Zielspeicher fuer den Speichertransfer.'
+            unknownTarget: '<#FF3232>Unbekannter Speicherzieltyp. Nutze sqlite, mysql oder mariadb.'
+            sameTarget: '<#FF3232>Quell- und Zielspeicher muessen unterschiedlich sein.'
+            sqlBridgeRequired: '<#FF3232>Direkter SQL-zu-SQL-Transfer wird mit der aktuellen einzelnen SQL-Konfiguration nicht unterstuetzt. Transferiere zuerst nach sqlite, aendere die SQL-Konfiguration und transferiere dann von sqlite zum SQL-Ziel.'
+            failure: '<#FF3232>Speichertyp-Transfer fehlgeschlagen.'
         deleteHistory:
           usage: '<#A4A4A4>Benutze <red>/loritimeadmin deleteHistory [player] server:<source> [world:<source>] [time:<range>] <#A4A4A4>um das Loeschen von Verlaufsdaten vorzubereiten. Ohne Spieler werden alle Spieler beruecksichtigt.'
           preview: '<#A4A4A4>DeleteHistory-Vorschau fuer <#50CBAB>[player]<#A4A4A4>: Scope <#50CBAB>[scope]<#A4A4A4>, Zeitraum <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>Sitzungen, <#50CBAB>[adjustments] <#A4A4A4>Anpassungen, <#50CBAB>[players] <#A4A4A4>Spieler. Nutze <red>/lta confirm <#A4A4A4>innerhalb von 15 Sekunden zum Anwenden.'

@@ -50,7 +50,7 @@ messages:
           self: '<#A4A4A4>您已经游玩了 <#50CBAB>[time] [scope][range]<#A4A4A4>。'
           other: '<#A4A4A4>玩家 <#50CBAB>[player] <#A4A4A4>已经游玩了 <#50CBAB>[time] [scope][range]<#A4A4A4>。'
       loritimeadmin:
-        usage: '<#A4A4A4>使用 <red>/ltmodify [add | set | reset] [玩家] [时间] [server:<服务器>|s:<服务器>] [world:<世界>|w:<世界>] <#A4A4A4>来编辑一个玩家的在线时间。<newline>其它命令：<red>/loritimeadmin [reload | update | deleteUser | transfer | confirm]'
+        usage: '<#A4A4A4>使用 <red>/ltmodify [add | set | reset] [玩家] [时间] [server:<服务器>|s:<服务器>] [world:<世界>|w:<世界>] <#A4A4A4>来编辑一个玩家的在线时间。<newline>其它命令：<red>/loritimeadmin [reload | update | storage | transfer | deleteHistory | confirm]'
         missingUuid: '<#A4A4A4>玩家 <#50CBAB>[player] <#A4A4A4>是未知的。'
         notTime: '<#A4A4A4>给出的参数 <red>[argument] <#FF3232>不是有效的。'
         set:
@@ -79,6 +79,17 @@ messages:
           warning: '<#FF3232>WARNING: This transfer rewrites stored history and cannot be reverted by LoriTime. Create and verify a backup before running /lta confirm.'
           success: '<#1AFA29>Transfer completed: <#50CBAB>[sessions] <#1AFA29>sessions, <#50CBAB>[adjustments] <#1AFA29>adjustments, <#50CBAB>[players] <#1AFA29>players.'
           failure: '<#FF3232>Storage transfer failed.'
+        storage:
+          transfer:
+            usage: '<#A4A4A4>Use <red>/loritimeadmin storage transfer [sqlite|mysql|mariadb] <#A4A4A4>to preview copying all LoriTime data to an empty target storage.'
+            preview: '<#A4A4A4>Storage transfer preview: <#50CBAB>[source] <#A4A4A4>to <#50CBAB>[target]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>sessions, <#50CBAB>[adjustments] <#A4A4A4>adjustments, <#50CBAB>[players] <#A4A4A4>players. Use <red>/lta confirm <#A4A4A4>within 15 seconds to apply.'
+            warning: '<#FF3232>WARNING: The target storage must be empty. Create and verify a backup before running /lta confirm.'
+            success: '<#1AFA29>Storage transfer to <#50CBAB>[target] <#1AFA29>completed: <#50CBAB>[sessions] <#1AFA29>sessions, <#50CBAB>[adjustments] <#1AFA29>adjustments, <#50CBAB>[players] <#1AFA29>players.'
+            targetNotEmpty: '<#FF3232>The target storage is not empty. Use a fresh target before running storage transfer.'
+            unknownTarget: '<#FF3232>Unknown storage target. Use sqlite, mysql, or mariadb.'
+            sameTarget: '<#FF3232>Source and target storage types must be different.'
+            sqlBridgeRequired: '<#FF3232>Direct SQL-to-SQL transfer is not supported with the current single SQL config. Transfer to sqlite first, change SQL config, then transfer from sqlite to the SQL target.'
+            failure: '<#FF3232>Storage type transfer failed.'
         deleteHistory:
           usage: '<#A4A4A4>Use <red>/loritimeadmin deleteHistory [player] server:<source> [world:<source>] [time:<range>] <#A4A4A4>to preview deleting scoped history. Omit player to delete matching history for all players.'
           preview: '<#A4A4A4>DeleteHistory preview for <#50CBAB>[player]<#A4A4A4>: scope <#50CBAB>[scope]<#A4A4A4>, range <#50CBAB>[range]<#A4A4A4>, <#50CBAB>[sessions] <#A4A4A4>sessions, <#50CBAB>[adjustments] <#A4A4A4>adjustments, <#50CBAB>[players] <#A4A4A4>players. Use <red>/lta confirm <#A4A4A4>within 15 seconds to apply.'

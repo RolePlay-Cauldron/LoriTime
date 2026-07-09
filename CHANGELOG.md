@@ -8,6 +8,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - New `lta` subcommand
   - `transfer` to transfer playtime between servers and worlds
+  - `deleteHistory` to delete playtime history for a player on specific worlds or servers
+  - `storage transfer` to preview and confirm full storage transfers between `sqlite`, `mysql`, and `mariadb`
 ### Changed
 - Updated several dependencies
 ### Deprecated
