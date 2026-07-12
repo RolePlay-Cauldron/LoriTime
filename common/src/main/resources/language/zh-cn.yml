@@ -100,6 +100,17 @@ messages:
           none: '<#FF3232>There is no pending admin action to confirm.'
           expired: '<#FF3232>The pending admin action expired. Run the preview command again.'
           failure: '<#FF3232>The confirmed admin action failed.'
+      stats:
+        commandUsage: '<#A4A4A4>用法：<red>/ltstats [users|sessions|usage|top|afk|retention] [time:<范围>] [server:<服务器>] [world:<世界>]。'
+        unsupported: '<#FF3232>当前存储不支持统计。'
+        error: '<#FF3232>无法计算统计。'
+        overview: '<#A4A4A4><newline>网络统计 — <#50CBAB>[range] <#A4A4A4>([scope])<newline>独立用户：<#50CBAB>[unique]<#A4A4A4> | 新用户：<#50CBAB>[new]<newline><#A4A4A4>会话：<#50CBAB>[sessions]<#A4A4A4> | 总游戏时间：<#50CBAB>[playtime]<newline><#A4A4A4>中位数：<#50CBAB>[median]<#A4A4A4> | 最长：<#50CBAB>[longest]<#A4A4A4> | 每用户会话：<#50CBAB>[peruser]<newline><#A4A4A4>跳出：<#50CBAB>[bounces] ([bounce])<#A4A4A4> | 峰值：<#50CBAB>[peak]<newline><#A4A4A4>AFK 玩家：<#50CBAB>[afkplayers]<#A4A4A4> | AFK 踢出：<#50CBAB>[afkkicks]'
+        users: '<#A4A4A4>用户 — [range] ([scope])<newline>独立：<#50CBAB>[unique]<#A4A4A4> | 新增：<#50CBAB>[new]<#A4A4A4> | 7 天留存：<#50CBAB>[retention]'
+        sessions: '<#A4A4A4>会话 — [range] ([scope])<newline>总数：<#50CBAB>[sessions]<#A4A4A4> | 中位数：<#50CBAB>[median]<#A4A4A4> | 最长：<#50CBAB>[longest]<newline><#A4A4A4>每用户：<#50CBAB>[peruser]<#A4A4A4> | 跳出：<#50CBAB>[bounces] ([bounce])<#A4A4A4> | 峰值：<#50CBAB>[peak]'
+        usage: '<#A4A4A4>使用情况 — [range] ([scope])<newline>[usage]'
+        top: '<#A4A4A4>游戏时间排行 — [range] ([scope])<newline>[top]'
+        afk: '<#A4A4A4>AFK — [range] ([scope])<newline>玩家：<#50CBAB>[afkplayers]<#A4A4A4> | 时段：<#50CBAB>[afkperiods]<#A4A4A4> | 时长：<#50CBAB>[afktime]<#A4A4A4> | 踢出：<#50CBAB>[afkkicks]'
+        retention: '<#A4A4A4>留存 — [range] ([scope])<newline>新用户：<#50CBAB>[new]<#A4A4A4> | 成熟 7 天留存：<#50CBAB>[retention]'
       top:
         usage: '<#A4A4A4>使用 <red>/onlinetimetop [页数] <#A4A4A4>来查看在线时间排行榜。'
         gatheringData: '<#A4A4A4>收集数据并开始计算……'

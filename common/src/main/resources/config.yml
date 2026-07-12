@@ -32,6 +32,15 @@ server:
   # Proxy platforms derive their server context from the connected backend server.
   name: 'default'
 
+##########
+# Stats  #
+##########
+stats:
+  # Range used by /ltstats when time:<range> is omitted.
+  default-range: '1d'
+  # A completed network session shorter than this counts as a bounce.
+  bounce-threshold: '3m'
+
 ###########
 # Updater #
 ###########

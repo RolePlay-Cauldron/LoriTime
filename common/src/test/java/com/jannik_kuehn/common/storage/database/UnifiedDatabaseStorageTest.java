@@ -11,6 +11,7 @@ import com.jannik_kuehn.common.storage.database.table.PlayerTable;
 import com.jannik_kuehn.common.storage.database.table.ServerTable;
 import com.jannik_kuehn.common.storage.database.table.TimeTable;
 import com.jannik_kuehn.common.storage.database.table.WorldTable;
+import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
@@ -43,7 +44,8 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SuppressWarnings({"PMD.CouplingBetweenObjects", "PMD.UnitTestContainsTooManyAsserts"})
+@SuppressWarnings({"PMD.CouplingBetweenObjects", "PMD.UnitTestContainsTooManyAsserts", "PMD.UseExplicitTypes",
+        "PMD.UnitTestAssertionsShouldIncludeMessage"})
 class UnifiedDatabaseStorageTest {
 
     private static final String TABLE_PREFIX = "loritime";
@@ -821,6 +823,56 @@ class UnifiedDatabaseStorageTest {
             assertThrows(StorageException.class, () -> source.applyStorageTransferTo(target, preview.confirmation()),
                     "Expected non-empty target to be rejected");
             assertTrue(target.getUuid("Lorias_").isEmpty(), "Expected source data not to be copied");
+        }
+    }
+
+    @Test
+    void afkPeriodsAreUniqueScopedAndRecoveredAsShutdown() throws Exception {
+        final Instant start = Instant.parse("2026-07-10T10:00:00Z");
+        final TimeRange range = TimeRange.between(start.minusSeconds(1), start.plusSeconds(301));
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", start);
+            storage.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", start.plusSeconds(10));
+            assertEquals(1, storage.getAfkPeriods(range, TimeScope.GLOBAL).size(), "Expected one open period");
+            assertTrue(storage.getAfkPeriods(range, TimeScope.server("creative")).isEmpty(),
+                    "Expected scope filtering");
+
+            assertEquals(1, storage.recoverOpenAfkPeriods(start.plusSeconds(300)), "Expected stale recovery");
+            final var recovered = storage.getAfkPeriods(range, TimeScope.world("survival", "world")).getFirst();
+            assertEquals(AfkPeriodEndReason.SHUTDOWN, recovered.endReason().orElseThrow());
+            assertEquals(start.plusSeconds(300), recovered.endedAt().orElseThrow());
+        }
+    }
+
+    @Test
+    void afkPeriodClosesWithExplicitReason() throws Exception {
+        final Instant start = Instant.parse("2026-07-10T10:00:00Z");
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", start);
+            storage.closeAfkPeriod(PLAYER, start.plusSeconds(60), AfkPeriodEndReason.RESUMED);
+            final var period = storage.getAfkPeriods(TimeRange.between(start, start.plusSeconds(61)), TimeScope.GLOBAL)
+                    .getFirst();
+            assertEquals(AfkPeriodEndReason.RESUMED, period.endReason().orElseThrow());
+        }
+    }
+
+    @Test
+    void statisticsMigrationsCreateBoundedHistoryIndexes() throws Exception {
+        try (UnifiedDatabaseStorage ignored = storage(); Connection connection = openSqlite();
+             Statement statement = connection.createStatement()) {
+            assertTrue(hasIndex(statement, TABLE_PREFIX + "_time", "idx_" + TABLE_PREFIX + "_time_range"));
+            assertTrue(hasIndex(statement, TABLE_PREFIX + "_afk_period", "idx_" + TABLE_PREFIX + "_afk_range"));
+        }
+    }
+
+    private boolean hasIndex(final Statement statement, final String table, final String index) throws SQLException {
+        try (ResultSet result = statement.executeQuery("PRAGMA index_list('" + table + "')")) {
+            while (result.next()) {
+                if (index.equals(result.getString("name"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

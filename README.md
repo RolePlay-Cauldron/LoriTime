@@ -14,6 +14,24 @@ LoriTime tracks how long players are connected to a Minecraft server or network.
 - Provides single-server and proxy/backend multi-setup modes.
 - Stores data in SQLite, MySQL, or MariaDB.
 - Includes AFK handling, configurable commands, placeholders, localization, backups, and update checks.
+- Provides bounded network statistics and durable AFK-period history through `/ltstats`.
+
+## Network statistics
+
+`/ltstats` shows a compact overview for the previous day by default. Use `time:<range>`, `server:<server>`,
+and `world:<world>` in any order to select a different bounded scope, for example
+`/ltstats time:7d server:survival`. The `users`, `sessions`, `usage`, `top`, `afk`, and `retention`
+subcommands provide focused views. The command requires `loritime.stats` and is available only on a
+standalone/master backend or a proxy that owns canonical storage.
+
+The default range is configured with `stats.default-range` (`1d`). A bounce is a completed logical network
+session shorter than `stats.bounce-threshold` (`3m`). World and backend-server switches within 30 seconds are
+merged into one logical session. Playtime, usage, concurrency, and AFK durations are clipped to the selected
+range; incomplete sessions are not classified as bounces. Seven-day retention excludes cohorts that have not
+yet had the complete return window.
+
+AFK duration history begins when the version 3 AFK-period migration is installed; LoriTime does not infer older
+AFK intervals. Open intervals left by shutdowns or crashes are recovered with the `SHUTDOWN` end reason.
 
 > LoriTime 2 development builds require Java 21. See [Compatibility](https://roleplay-cauldron.github.io/loritime/reference/compatibility/) for the full platform matrix.
 

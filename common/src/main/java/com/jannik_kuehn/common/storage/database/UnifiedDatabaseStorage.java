@@ -4,6 +4,7 @@ import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
+import com.jannik_kuehn.common.storage.contract.StatisticsStorage;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.database.provider.LoriTimeConnectionProvider;
 import com.jannik_kuehn.common.storage.database.table.ManualAdjustmentTable;
@@ -11,11 +12,16 @@ import com.jannik_kuehn.common.storage.database.table.PlayerTable;
 import com.jannik_kuehn.common.storage.database.table.ServerTable;
 import com.jannik_kuehn.common.storage.database.table.TimeTable;
 import com.jannik_kuehn.common.storage.database.table.WorldTable;
+import com.jannik_kuehn.common.storage.model.AfkPeriod;
+import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerSessionContext;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
+import com.jannik_kuehn.common.storage.model.SessionHistoryRow;
+import com.jannik_kuehn.common.storage.model.StatisticsRequest;
+import com.jannik_kuehn.common.storage.model.StatisticsSnapshot;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceConfirmation;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceOperation;
@@ -25,6 +31,8 @@ import com.jannik_kuehn.common.storage.model.StorageMaintenanceScope;
 import com.jannik_kuehn.common.storage.model.StorageTransferMapping;
 import com.jannik_kuehn.common.storage.model.StorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
+import com.jannik_kuehn.common.storage.statistics.StatisticsAggregator;
+import com.jannik_kuehn.common.utils.UuidUtil;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -62,7 +70,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
         "PMD.InefficientStringBuffering",
         "PMD.TooManyMethods"
 })
-public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaintenance {
+public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaintenance, StatisticsStorage {
 
     /**
      * Actor label used when a legacy method does not provide explicit actor metadata.
@@ -144,6 +152,9 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
      */
     private final String adjustmentTableName;
 
+    /** AFK-period table derived from the normalized table prefix. */
+    private final String afkPeriodTableName;
+
     /**
      * Creates a database-backed unified storage instance.
      *
@@ -176,6 +187,205 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         this.worldTableName = worldTable.toString();
         this.timeTableName = timeTable.toString();
         this.adjustmentTableName = adjustmentTable.toString();
+        final String suffix = "_time_adjustment";
+        this.afkPeriodTableName = this.adjustmentTableName.substring(0,
+                this.adjustmentTableName.length() - suffix.length()) + "_afk_period";
+    }
+
+    @Override
+    public void openAfkPeriod(final UUID playerId, final String playerName, final String server, final String world,
+                              final Instant startedAt) throws StorageException {
+        Objects.requireNonNull(playerId);
+        Objects.requireNonNull(server);
+        Objects.requireNonNull(world);
+        Objects.requireNonNull(startedAt);
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection()) {
+                final long internalPlayerId = playerTable.ensurePlayer(connection, playerId,
+                        Optional.ofNullable(playerName));
+                final long worldId = worldTable.ensureWorld(connection, server, world);
+                try (PreparedStatement select = connection.prepareStatement("SELECT 1 FROM `" + afkPeriodTableName
+                        + "` WHERE `player_id` = ? AND `ended_at` IS NULL LIMIT 1")) {
+                    select.setLong(1, internalPlayerId);
+                    try (ResultSet result = select.executeQuery()) {
+                        if (result.next()) {
+                            return;
+                        }
+                    }
+                }
+                try (PreparedStatement insert = connection.prepareStatement("INSERT INTO `" + afkPeriodTableName
+                        + "` (`player_id`, `world_id`, `started_at`) VALUES (?, ?, ?)")) {
+                    insert.setLong(1, internalPlayerId);
+                    insert.setLong(2, worldId);
+                    setStoredInstant(insert, 3, startedAt);
+                    insert.executeUpdate();
+                }
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public void closeAfkPeriod(final UUID playerId, final Instant endedAt, final AfkPeriodEndReason reason)
+            throws StorageException {
+        Objects.requireNonNull(playerId);
+        Objects.requireNonNull(endedAt);
+        Objects.requireNonNull(reason);
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection();
+                 PreparedStatement update = connection.prepareStatement("UPDATE `" + afkPeriodTableName
+                         + "` SET `ended_at` = ?, `end_reason` = ? WHERE `player_id` = (SELECT `id` FROM `"
+                         + playerTableName + "` WHERE `uuid` = ?) AND `ended_at` IS NULL")) {
+                setStoredInstant(update, 1, endedAt);
+                update.setString(2, reason.name());
+                update.setBytes(3, UuidUtil.toBytes(playerId));
+                update.executeUpdate();
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public int recoverOpenAfkPeriods(final Instant endedAt) throws StorageException {
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection();
+                 PreparedStatement update = connection.prepareStatement("UPDATE `" + afkPeriodTableName
+                         + "` SET `ended_at` = ?, `end_reason` = 'SHUTDOWN' WHERE `ended_at` IS NULL")) {
+                setStoredInstant(update, 1, endedAt);
+                return update.executeUpdate();
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public List<AfkPeriod> getAfkPeriods(final TimeRange range, final TimeScope scope) throws StorageException {
+        final List<AfkPeriod> periods = new ArrayList<>();
+        final String sql = "SELECT a.`id`, p.`uuid`, s.`server`, w.`world`, a.`started_at`, a.`ended_at`, "
+                + "a.`end_reason` FROM `" + afkPeriodTableName + "` a JOIN `" + playerTableName
+                + "` p ON p.`id` = a.`player_id` JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` WHERE "
+                + "a.`started_at` < ? AND (a.`ended_at` IS NULL OR a.`ended_at` > ?)"
+                + scopeCondition(scope, "s", "w")
+                + " ORDER BY a.`started_at`";
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection(); PreparedStatement select = connection.prepareStatement(sql)) {
+                int index = 1;
+                setStoredInstant(select, index++, range.endExclusive());
+                setStoredInstant(select, index++, range.startInclusive());
+                bindScope(select, index, scope);
+                try (ResultSet result = select.executeQuery()) {
+                    while (result.next()) {
+                        final Object ended = result.getObject("ended_at");
+                        final String reason = result.getString("end_reason");
+                        periods.add(new AfkPeriod(result.getLong("id"), UuidUtil.fromBytes(result.getBytes("uuid")),
+                                result.getString("server"), result.getString("world"), readInstant(result, "started_at"),
+                                ended == null ? Optional.empty() : Optional.of(readInstant(result, "ended_at")),
+                                reason == null ? Optional.empty() : Optional.of(AfkPeriodEndReason.valueOf(reason))));
+                    }
+                }
+            }
+            return periods;
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public StatisticsSnapshot getStatistics(final StatisticsRequest request) throws StorageException {
+        final List<SessionHistoryRow> rows = new ArrayList<>();
+        final String sql = "SELECT p.`uuid`, p.`name`, s.`server`, w.`world`, t.`join_time`, t.`leave_time`, "
+                + "t.`reason`, (SELECT MIN(t0.`join_time`) FROM `" + timeTableName
+                + "` t0 WHERE t0.`player_id` = t.`player_id`) AS `first_join` FROM `" + timeTableName
+                + "` t JOIN `" + playerTableName + "` p ON p.`id` = t.`player_id` JOIN `" + worldTableName
+                + "` w ON w.`id` = t.`world_id` JOIN `" + serverTableName
+                + "` s ON s.`id` = w.`server_id` WHERE " + instantLess("t.`join_time`") + " AND "
+                + instantGreaterOrEqual("t.`leave_time`") + scopeCondition(request.scope(), "s", "w")
+                + " ORDER BY p.`uuid`, t.`join_time`";
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection(); PreparedStatement select = connection.prepareStatement(sql)) {
+                int index = 1;
+                setRangeParam(select, index++, request.range().endExclusive());
+                setRangeParam(select, index++, request.range().startInclusive().minus(StatisticsAggregator.CONTEXT_SWITCH_TOLERANCE));
+                bindScope(select, index, request.scope());
+                try (ResultSet result = select.executeQuery()) {
+                    while (result.next()) {
+                        rows.add(new SessionHistoryRow(UuidUtil.fromBytes(result.getBytes("uuid")), result.getString("name"),
+                                result.getString("server"), result.getString("world"), readInstant(result, "join_time"),
+                                readInstant(result, "leave_time"), parseReason(result.getString("reason")),
+                                readInstant(result, "first_join")));
+                    }
+                }
+            }
+            return StatisticsAggregator.aggregate(request, rows, getAfkPeriods(request.range(), request.scope()));
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    private TimeEntryReason parseReason(final String reason) {
+        try {
+            return TimeEntryReason.valueOf(reason);
+        } catch (final IllegalArgumentException ex) {
+            return TimeEntryReason.UNSPECIFIED;
+        }
+    }
+
+    private String scopeCondition(final TimeScope scope, final String serverAlias, final String worldAlias) {
+        return switch (scope.type()) {
+            case GLOBAL -> "";
+            case SERVER -> " AND " + serverAlias + ".`server` = ?";
+            case WORLD -> " AND " + serverAlias + ".`server` = ? AND " + worldAlias + ".`world` = ?";
+        };
+    }
+
+    private void bindScope(final PreparedStatement statement, final int start, final TimeScope scope) throws SQLException {
+        if (scope.type() != TimeScope.Type.GLOBAL) {
+            statement.setString(start, scope.server());
+        }
+        if (scope.type() == TimeScope.Type.WORLD) {
+            statement.setString(start + 1, scope.world());
+        }
+    }
+
+    private String instantLess(final String column) {
+        return dialect == DatabaseDialect.SQLITE ? sqliteEpochMillis(column) + " < ?" : column + " < ?";
+    }
+
+    private String instantGreaterOrEqual(final String column) {
+        return dialect == DatabaseDialect.SQLITE ? sqliteEpochMillis(column) + " >= ?" : column + " >= ?";
+    }
+
+    private void setStoredInstant(final PreparedStatement statement, final int index, final Instant instant)
+            throws SQLException {
+        if (dialect == DatabaseDialect.SQLITE) {
+            statement.setString(index, Timestamp.from(instant).toString());
+        } else {
+            statement.setTimestamp(index, Timestamp.from(instant));
+        }
     }
 
     @Override

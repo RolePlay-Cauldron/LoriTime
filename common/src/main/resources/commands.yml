@@ -23,6 +23,11 @@ profiles:
         - 'ltop'
         - 'ttop'
         - 'toptimes'
+    stats:
+      name: 'ltstats'
+      aliases:
+        - 'stats'
+        - 'loritimestats'
     afk:
       name: 'afk'
       aliases: [ ]
@@ -51,6 +56,11 @@ profiles:
           - 'ltop'
           - 'ttop'
           - 'toptimes'
+      stats:
+        name: 'ltstats'
+        aliases:
+          - 'stats'
+          - 'loritimestats'
       afk:
         name: 'afk'
         aliases: [ ]

@@ -4,13 +4,18 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.storage.model.AfkPeriod;
+import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PersistedPlayerSession;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerSessionContext;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
+import com.jannik_kuehn.common.storage.model.StatisticsRequest;
+import com.jannik_kuehn.common.storage.model.StatisticsSnapshot;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,7 +30,7 @@ import java.util.concurrent.ConcurrentMap;
  * Unified storage decorator that keeps active sessions in memory while persisting session rows.
  */
 @SuppressWarnings({"PMD.TooManyMethods", "PMD.CouplingBetweenObjects"})
-public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator {
+public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator, StatisticsStorage {
 
     /**
      * Logger for accumulator operations.
@@ -151,6 +156,40 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator 
     @Override
     public void addAdjustments(final List<ManualTimeAdjustment> adjustments) throws StorageException {
         storage.addAdjustments(adjustments);
+    }
+
+    @Override
+    public void openAfkPeriod(final UUID playerId, final String playerName, final String server, final String world,
+                              final Instant startedAt) throws StorageException {
+        statisticsStorage().openAfkPeriod(playerId, playerName, server, world, startedAt);
+    }
+
+    @Override
+    public void closeAfkPeriod(final UUID playerId, final Instant endedAt, final AfkPeriodEndReason reason)
+            throws StorageException {
+        statisticsStorage().closeAfkPeriod(playerId, endedAt, reason);
+    }
+
+    @Override
+    public int recoverOpenAfkPeriods(final Instant endedAt) throws StorageException {
+        return statisticsStorage().recoverOpenAfkPeriods(endedAt);
+    }
+
+    @Override
+    public List<AfkPeriod> getAfkPeriods(final TimeRange range, final TimeScope scope) throws StorageException {
+        return statisticsStorage().getAfkPeriods(range, scope);
+    }
+
+    @Override
+    public StatisticsSnapshot getStatistics(final StatisticsRequest request) throws StorageException {
+        return statisticsStorage().getStatistics(request);
+    }
+
+    private StatisticsStorage statisticsStorage() throws StorageException {
+        if (storage instanceof final StatisticsStorage statistics) {
+            return statistics;
+        }
+        throw new StorageException("Statistics are not supported by the active storage");
     }
 
     @Override
