@@ -80,6 +80,23 @@ class StatisticsAggregatorTest {
         assertEquals(1, result.peakConcurrent(), "AFK player remains online on the network");
     }
 
+    @Test
+    void activeSessionCountsInSessionMetricsButNotBounces() {
+        final var active = row(PLAYER, "Lorias_", "survival", "world", 10, 130,
+                TimeEntryReason.AUTO_FLUSH, START.plusSeconds(10));
+
+        final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
+                TimeRange.between(START, START.plusSeconds(180)), TimeScope.GLOBAL, Duration.ofMinutes(3),
+                START.plusSeconds(130)), List.of(active), List.of());
+
+        assertEquals(1, result.uniqueUsers());
+        assertEquals(1, result.sessions());
+        assertEquals(Duration.ofSeconds(120), result.medianSession());
+        assertEquals(Duration.ofSeconds(120), result.longestSession());
+        assertEquals(0, result.bounces(), "Active sessions must not be classified as bounces");
+        assertEquals(1, result.peakConcurrent());
+    }
+
     private SessionHistoryRow row(final UUID uuid, final String name, final String server, final String world,
                                   final long joined, final long left, final TimeEntryReason reason,
                                   final Instant firstJoin) {

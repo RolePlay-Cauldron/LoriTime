@@ -1,5 +1,6 @@
 package com.jannik_kuehn.common.command;
 
+import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
@@ -15,7 +16,8 @@ import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -23,11 +25,8 @@ import java.util.Map;
 import java.util.OptionalLong;
 
 /** Canonical bounded network statistics command. */
-@SuppressWarnings({"PMD.CommentRequired", "PMD.CognitiveComplexity", "PMD.CyclomaticComplexity",
-        "PMD.LiteralsFirstInComparisons", "PMD.AvoidLiteralsInIfCondition"})
+@SuppressWarnings({"PMD.CommentRequired", "PMD.LiteralsFirstInComparisons", "PMD.AvoidLiteralsInIfCondition"})
 public class LoriTimeStatsCommand implements CommonCommand {
-    private static final long DEFAULT_RANGE_SECONDS = 86_400L;
-
     private static final long DEFAULT_BOUNCE_SECONDS = 180L;
 
     private static final List<String> VIEWS = List.of("users", "sessions", "usage", "top", "afk", "retention");
@@ -36,9 +35,19 @@ public class LoriTimeStatsCommand implements CommonCommand {
 
     private final Localization localization;
 
+    private final WrappedLogger log;
+
+    private final Clock clock;
+
     public LoriTimeStatsCommand(final LoriTimePlugin plugin, final Localization localization) {
+        this(plugin, localization, Clock.systemUTC());
+    }
+
+    /* default */ LoriTimeStatsCommand(final LoriTimePlugin plugin, final Localization localization, final Clock clock) {
         this.plugin = plugin;
         this.localization = localization;
+        this.log = plugin.getLoggerFactory().create(LoriTimeStatsCommand.class);
+        this.clock = clock;
     }
 
     @Override
@@ -46,24 +55,26 @@ public class LoriTimeStatsCommand implements CommonCommand {
         final String view = arguments.length > 0 && VIEWS.contains(arguments[0].toLowerCase(Locale.ROOT))
                 ? arguments[0].toLowerCase(Locale.ROOT) : "overview";
         final String[] flags = view.equals("overview") ? arguments : Arrays.copyOfRange(arguments, 1, arguments.length);
-        final long defaultRange = positiveDuration("stats.default-range", "1d", DEFAULT_RANGE_SECONDS);
         final long bounce = positiveDuration("stats.bounce-threshold", "3m", DEFAULT_BOUNCE_SECONDS);
-        final CommandScopes.LookupRequest parsed = CommandScopes.parseLookup(plugin.getParser(), Clock.systemUTC(), flags);
-        if (parsed == null || parsed.playerName() != null) {
+        final String defaultRange = plugin.getConfig().getString("stats.default-range", "calendar:today");
+        final ZoneId calendarZone = StatisticsRangeParser.resolveZone(
+                plugin.getConfig().getString("stats.calendar-time-zone", "system"), ZoneId.systemDefault(), log::warn);
+        final StatisticsRangeParser.Selection selection = StatisticsRangeParser.parse(plugin.getParser(), clock,
+                calendarZone, defaultRange, flags);
+        if (selection == null) {
             send(sender, "commandUsage", Map.of());
             return;
         }
-        final TimeRange range = parsed.hasTimeRange() ? parsed.timeRange()
-                : TimeRange.between(Instant.now().minusSeconds(defaultRange), Instant.now());
+        final CommandScopes.LookupRequest parsed = selection.lookup();
+        final TimeRange range = selection.range();
         final String server = parsed.serverName() == null && parsed.worldName() != null
                 ? plugin.getConfig().getString("server.name", SessionContextDefaults.SERVER) : parsed.serverName();
         final TimeScope scope = parsed.worldName() != null ? TimeScope.world(server, parsed.worldName())
                 : parsed.serverName() != null ? TimeScope.server(parsed.serverName()) : TimeScope.GLOBAL;
         plugin.getStatisticsStorage().ifPresentOrElse(storage -> {
             try {
-                render(sender, view, storage.getStatistics(new StatisticsRequest(range, scope, Duration.ofSeconds(bounce))),
-                        parsed.timeRangeInput() == null ? plugin.getConfig().getString("stats.default-range", "1d")
-                                : parsed.timeRangeInput(), scope);
+                render(sender, view, storage.getStatistics(new StatisticsRequest(range, scope,
+                                Duration.ofSeconds(bounce), selection.observedAt())), selection.label(), scope);
             } catch (final StorageException ex) {
                 send(sender, "error", Map.of());
             }
@@ -132,10 +143,15 @@ public class LoriTimeStatsCommand implements CommonCommand {
 
     @Override
     public List<String> handleTabComplete(final CommonSender source, final String... args) {
+        final String current = args.length == 0 ? "" : args[args.length - 1].toLowerCase(Locale.ROOT);
+        final List<String> suggestions = new ArrayList<>();
         if (args.length <= 1) {
-            return VIEWS.stream().filter(value -> args.length == 0 || value.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            suggestions.addAll(VIEWS);
         }
-        return List.of("time:1d", "server:", "world:");
+        suggestions.addAll(List.of("time:1d", "calendar:today", "calendar:this-week", "calendar:this-month",
+                "calendar:2d", "calendar:2d-3d", "calendar:2w", "calendar:2w-3w", "calendar:2mo",
+                "calendar:2mo-3mo", "server:", "world:"));
+        return suggestions.stream().filter(value -> value.startsWith(current)).toList();
     }
 
     @Override

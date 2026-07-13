@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 locale: 'de-de'
 prefix: '<#A4A4A4>[<#50CBAB>LoriTime<#A4A4A4>] '
 messages:
@@ -101,7 +101,7 @@ messages:
           expired: '<#FF3232>Die ausstehende Admin-Aktion ist abgelaufen. Führe die Vorschau erneut aus.'
           failure: '<#FF3232>Die bestätigte Admin-Aktion ist fehlgeschlagen.'
       stats:
-        commandUsage: '<#A4A4A4>Benutze <red>/ltstats [users|sessions|usage|top|afk|retention] [time:<Zeitraum>] [server:<Server>] [world:<Welt>].'
+        commandUsage: '<#A4A4A4>Benutze <red>/ltstats [users|sessions|usage|top|afk|retention] [time:<Zeitraum>|calendar:<Zeitraum>] [server:<Server>] [world:<Welt>].'
         unsupported: '<#FF3232>Statistiken werden vom aktiven Speicher nicht unterstützt.'
         error: '<#FF3232>Statistiken konnten nicht berechnet werden.'
         overview: '<#A4A4A4><newline>Netzwerkstatistik — <#50CBAB>[range] <#A4A4A4>([scope])<newline>Eindeutige Nutzer: <#50CBAB>[unique]<#A4A4A4> | Neue Nutzer: <#50CBAB>[new]<newline><#A4A4A4>Sitzungen: <#50CBAB>[sessions]<#A4A4A4> | Spielzeit: <#50CBAB>[playtime]<newline><#A4A4A4>Median: <#50CBAB>[median]<#A4A4A4> | Längste: <#50CBAB>[longest]<#A4A4A4> | Sitzungen/Nutzer: <#50CBAB>[peruser]<newline><#A4A4A4>Bounces: <#50CBAB>[bounces] ([bounce])<#A4A4A4> | Maximum: <#50CBAB>[peak]<newline><#A4A4A4>AFK-Spieler: <#50CBAB>[afkplayers]<#A4A4A4> | AFK-Kicks: <#50CBAB>[afkkicks]'

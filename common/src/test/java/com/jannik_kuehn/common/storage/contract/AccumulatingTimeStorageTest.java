@@ -4,15 +4,20 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.storage.model.AfkPeriod;
+import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerSessionContext;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
 import com.jannik_kuehn.common.storage.model.SessionContextDefaults;
+import com.jannik_kuehn.common.storage.model.StatisticsRequest;
+import com.jannik_kuehn.common.storage.model.StatisticsSnapshot;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -26,7 +31,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SuppressWarnings({"PMD.CloseResource", "PMD.UnitTestContainsTooManyAsserts"})
+@SuppressWarnings({"PMD.CloseResource", "PMD.UnitTestContainsTooManyAsserts",
+        "PMD.UnitTestAssertionsShouldIncludeMessage", "PMD.CouplingBetweenObjects"})
 class AccumulatingTimeStorageTest {
 
     private static final UUID PLAYER = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
@@ -303,11 +309,33 @@ class AccumulatingTimeStorageTest {
                 "Expected non-overlapping active time to be excluded");
     }
 
+    @Test
+    void statisticsCheckpointAdvancesActiveSessionAndLaterLeave() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+        final Instant observedAt = Instant.ofEpochMilli(9_000L);
+        final StatisticsRequest request = new StatisticsRequest(
+                TimeRange.between(Instant.EPOCH, Instant.ofEpochMilli(5_000L)), TimeScope.GLOBAL,
+                Duration.ofMinutes(3), observedAt);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "survival", "world", 1_000L);
+        accumulator.getStatistics(request);
+
+        assertEquals(9_000L, storage.sessions.getFirst().stoppedAtMs(),
+                "Expected checkpoint at observation time, not historical range end");
+        assertEquals(TimeEntryReason.AUTO_FLUSH, storage.sessions.getFirst().reason());
+        assertEquals(request, storage.statisticsRequest);
+
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 12_000L, TimeEntryReason.PLAYER_LEAVE);
+        assertEquals(12_000L, storage.sessions.getFirst().stoppedAtMs());
+        assertEquals(TimeEntryReason.PLAYER_LEAVE, storage.sessions.getFirst().reason());
+    }
+
     private AccumulatingTimeStorage accumulator(final FakeUnifiedStorage storage) {
         return new AccumulatingTimeStorage(mock(WrappedLogger.class), storage);
     }
 
-    private static final class FakeUnifiedStorage implements UnifiedStorage {
+    private static final class FakeUnifiedStorage implements UnifiedStorage, StatisticsStorage {
 
         private final List<PlayerSessionChunk> sessions = new ArrayList<>();
 
@@ -316,6 +344,8 @@ class AccumulatingTimeStorageTest {
         private final List<TimeEntryReason> directWriteReasons = new ArrayList<>();
 
         private boolean closed;
+
+        private StatisticsRequest statisticsRequest;
 
         @Override
         public Optional<UUID> getUuid(final String playerName) {
@@ -407,6 +437,34 @@ class AccumulatingTimeStorageTest {
         @Override
         public void addAdjustments(final List<ManualTimeAdjustment> adjustments) {
             adjustments.forEach(this::addTime);
+        }
+
+        @Override
+        public void openAfkPeriod(final UUID playerId, final String playerName, final String server,
+                                  final String world, final Instant startedAt) {
+            // Empty
+        }
+
+        @Override
+        public void closeAfkPeriod(final UUID playerId, final Instant endedAt, final AfkPeriodEndReason reason) {
+            // Empty
+        }
+
+        @Override
+        public int recoverOpenAfkPeriods(final Instant endedAt) {
+            return 0;
+        }
+
+        @Override
+        public List<AfkPeriod> getAfkPeriods(final TimeRange range, final TimeScope scope) {
+            return List.of();
+        }
+
+        @Override
+        public StatisticsSnapshot getStatistics(final StatisticsRequest request) {
+            statisticsRequest = request;
+            return new StatisticsSnapshot(0, 0, 0, Duration.ZERO, Duration.ZERO, Duration.ZERO, 0.0D,
+                    0, 0.0D, 0, 0, 0, Duration.ZERO, 0, 0.0D, Map.of(), Map.of(), List.of());
         }
 
         @Override

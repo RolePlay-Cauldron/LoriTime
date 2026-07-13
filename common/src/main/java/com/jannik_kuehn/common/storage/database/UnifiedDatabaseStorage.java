@@ -314,7 +314,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     public StatisticsSnapshot getStatistics(final StatisticsRequest request) throws StorageException {
         final List<SessionHistoryRow> rows = new ArrayList<>();
         final String sql = "SELECT p.`uuid`, p.`name`, s.`server`, w.`world`, t.`join_time`, t.`leave_time`, "
-                + "t.`reason`, (SELECT MIN(t0.`join_time`) FROM `" + timeTableName
+                + "t.`reason`, (SELECT " + minimumInstant("t0.`join_time`") + " FROM `" + timeTableName
                 + "` t0 WHERE t0.`player_id` = t.`player_id`) AS `first_join` FROM `" + timeTableName
                 + "` t JOIN `" + playerTableName + "` p ON p.`id` = t.`player_id` JOIN `" + worldTableName
                 + "` w ON w.`id` = t.`world_id` JOIN `" + serverTableName
@@ -377,6 +377,10 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
 
     private String instantGreaterOrEqual(final String column) {
         return dialect == DatabaseDialect.SQLITE ? sqliteEpochMillis(column) + " >= ?" : column + " >= ?";
+    }
+
+    private String minimumInstant(final String column) {
+        return dialect == DatabaseDialect.SQLITE ? "MIN(" + sqliteEpochMillis(column) + ")" : "MIN(" + column + ")";
     }
 
     private void setStoredInstant(final PreparedStatement statement, final int index, final Instant instant)
@@ -2246,7 +2250,11 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
     }
 
     private String sqliteEpochMillis(final String column) {
-        return "CAST(((julianday(" + column + ") - 2440587.5) * 86400000) AS INTEGER)";
+        return "CASE WHEN typeof(" + column + ") IN ('integer', 'real') THEN CAST(" + column
+                + " AS INTEGER) WHEN trim(" + column + ") <> '' AND trim(" + column
+                + ") NOT GLOB '*[^0-9]*' THEN CAST(" + column
+                + " AS INTEGER) ELSE CAST(ROUND((julianday(" + column
+                + ", 'utc') - 2440587.5) * 86400000) AS INTEGER) END";
     }
 
     private void setRangeParam(final PreparedStatement statement, final int index, final Instant instant)

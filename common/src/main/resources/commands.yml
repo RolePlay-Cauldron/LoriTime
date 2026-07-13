@@ -1,3 +1,4 @@
+commandSchemaVersion: 1
 profiles:
   proxy:
     admin:

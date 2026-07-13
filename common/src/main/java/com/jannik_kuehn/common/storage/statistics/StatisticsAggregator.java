@@ -63,11 +63,15 @@ public final class StatisticsAggregator {
         }
 
         final List<LogicalSession> sessions = logicalSessions(rows, afkPeriods);
-        final List<Long> durations = sessions.stream()
-                .filter(session -> session.completed && request.range().contains(session.start))
+        final List<LogicalSession> selectedSessions = sessions.stream()
+                .filter(session -> request.range().contains(session.start))
+                .toList();
+        final List<Long> durations = selectedSessions.stream()
                 .map(session -> Duration.between(session.start, session.end).getSeconds())
                 .sorted().toList();
-        final long bounces = durations.stream().filter(value -> value < request.bounceThreshold().getSeconds()).count();
+        final long bounces = selectedSessions.stream().filter(session -> session.completed)
+                .map(session -> Duration.between(session.start, session.end).getSeconds())
+                .filter(value -> value < request.bounceThreshold().getSeconds()).count();
         final long totalSeconds = playerSeconds.values().stream().mapToLong(Long::longValue).sum();
         final long longest = durations.isEmpty() ? 0L : durations.get(durations.size() - 1);
         final long median = median(durations);

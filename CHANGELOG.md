@@ -6,12 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
-- Added `/ltstats` with a default 24-hour overview and focused user, session, usage, top-player, AFK, and retention views.
-- Added durable, scoped AFK-period history for SQLite, MySQL, and MariaDB through an additive schema migration.
+- Added `/ltstats` with a default 24-hour overview and focused user, session, usage, top-player, AFK, and retention views
+- Added durable, scoped AFK-period history for SQLite, MySQL, and MariaDB through an additive schema migration
+- Added `stats.default-range` (`1d`) and `stats.bounce-threshold` (`3m`) configuration defaults
 ### Changed
-- Added `stats.default-range` (`1d`) and `stats.bounce-threshold` (`3m`) configuration defaults.
-- Logical statistics sessions now merge adjacent world and backend-server segments; stale AFK periods recover as `SHUTDOWN`.
-- The existing external `LoriTimeService` API remains source and binary compatible.
+- Logical statistics sessions now merge adjacent world and backend-server segments; stale AFK periods recover as `SHUTDOWN`
+- Versioned and migrated statistics settings, localized messages, and command aliases for to support the new stats-feature
 ### Deprecated
 ### Removed
 ### Fixed

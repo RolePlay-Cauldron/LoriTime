@@ -5,6 +5,7 @@ import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.config.Configuration;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.storage.contract.AccumulatingTimeStorage;
 import com.jannik_kuehn.common.storage.database.migration.DatabaseMigrationPreflight;
 import com.jannik_kuehn.common.storage.database.table.ManualAdjustmentTable;
 import com.jannik_kuehn.common.storage.database.table.PlayerTable;
@@ -16,6 +17,7 @@ import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.PlayerSessionChunk;
 import com.jannik_kuehn.common.storage.model.PlayerStorageTransferRequest;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
+import com.jannik_kuehn.common.storage.model.StatisticsRequest;
 import com.jannik_kuehn.common.storage.model.StorageDeleteRequest;
 import com.jannik_kuehn.common.storage.model.StorageMaintenanceConfirmation;
 import com.jannik_kuehn.common.storage.model.StorageMaintenancePreview;
@@ -34,6 +36,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SuppressWarnings({"PMD.CouplingBetweenObjects", "PMD.UnitTestContainsTooManyAsserts", "PMD.UseExplicitTypes",
-        "PMD.UnitTestAssertionsShouldIncludeMessage"})
+        "PMD.UnitTestAssertionsShouldIncludeMessage", "PMD.AvoidLiteralsInIfCondition"})
 class UnifiedDatabaseStorageTest {
 
     private static final String TABLE_PREFIX = "loritime";
@@ -862,6 +865,91 @@ class UnifiedDatabaseStorageTest {
              Statement statement = connection.createStatement()) {
             assertTrue(hasIndex(statement, TABLE_PREFIX + "_time", "idx_" + TABLE_PREFIX + "_time_range"));
             assertTrue(hasIndex(statement, TABLE_PREFIX + "_afk_period", "idx_" + TABLE_PREFIX + "_afk_range"));
+        }
+    }
+
+    @Test
+    void sqliteStatisticsIncludeEpochMillisecondTextSessions() throws Exception {
+        final Instant start = Instant.parse("2026-07-10T10:00:00Z");
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    start.toEpochMilli(), start.plusSeconds(60).toEpochMilli(), TimeEntryReason.PLAYER_LEAVE));
+
+            final var result = storage.getStatistics(new StatisticsRequest(
+                    TimeRange.between(start.minusSeconds(1), start.plusSeconds(120)), TimeScope.GLOBAL,
+                    Duration.ofMinutes(3), start.plusSeconds(120)));
+
+            assertEquals(1, result.uniqueUsers());
+            assertEquals(1, result.sessions());
+            assertEquals(Duration.ofSeconds(60), result.totalPlayTime());
+        }
+    }
+
+    @Test
+    void sqliteStatisticsIncludeNewlyJoinedActiveSessionAtObservationTime() throws Exception {
+        final Instant observedAt = Instant.parse("2026-07-10T10:02:00Z");
+        final LoggerFactory loggerFactory = new LoggerFactory(Logger.getLogger("test"));
+        try (AccumulatingTimeStorage accumulator = new AccumulatingTimeStorage(
+                loggerFactory.create(AccumulatingTimeStorage.class), storage())) {
+            accumulator.startAccumulating(PLAYER, "Lorias_", "survival", "world",
+                    observedAt.minusSeconds(90).toEpochMilli());
+
+            final var result = accumulator.getStatistics(new StatisticsRequest(
+                    TimeRange.between(observedAt.minusSeconds(300), observedAt), TimeScope.GLOBAL,
+                    Duration.ofMinutes(3), observedAt));
+
+            assertEquals(1, result.uniqueUsers());
+            assertEquals(1, result.sessions());
+            assertEquals(Duration.ofSeconds(90), result.totalPlayTime());
+            assertEquals(Duration.ofSeconds(90), result.medianSession());
+            assertEquals(0, result.bounces());
+            assertEquals(1, result.peakConcurrent());
+        }
+    }
+
+    @Test
+    void sqliteStatisticsIncludeFormattedHistoricalTimestampsAndExcludeOutsideRows() throws Exception {
+        final Instant start = Instant.parse("2026-07-10T10:00:00Z");
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.persistSession(new PlayerSessionChunk(PLAYER, Optional.of("Lorias_"), "survival", "world",
+                    start.toEpochMilli(), start.plusSeconds(60).toEpochMilli(), TimeEntryReason.PLAYER_LEAVE));
+            storage.persistSession(new PlayerSessionChunk(OTHER_PLAYER, Optional.of("Other"), "survival", "world",
+                    start.minusSeconds(600).toEpochMilli(), start.minusSeconds(540).toEpochMilli(),
+                    TimeEntryReason.PLAYER_LEAVE));
+            try (Connection connection = openSqlite(); PreparedStatement update = connection.prepareStatement(
+                    "UPDATE `" + TABLE_PREFIX + "_time` SET `join_time` = ?, `leave_time` = ? "
+                            + "WHERE `player_id` = (SELECT `id` FROM `" + TABLE_PREFIX + "_player` WHERE `uuid` = ?)")) {
+                update.setString(1, Timestamp.from(start).toString());
+                update.setString(2, Timestamp.from(start.plusSeconds(60)).toString());
+                update.setBytes(3, com.jannik_kuehn.common.utils.UuidUtil.toBytes(PLAYER));
+                update.executeUpdate();
+            }
+
+            final var result = storage.getStatistics(new StatisticsRequest(
+                    TimeRange.between(start.minusSeconds(1), start.plusSeconds(120)), TimeScope.GLOBAL,
+                    Duration.ofMinutes(3), start.plusSeconds(120)));
+
+            assertEquals(1, result.uniqueUsers(), "Expected formatted in-range row and excluded older row");
+            assertEquals(Duration.ofSeconds(60), result.totalPlayTime());
+        }
+    }
+
+    @Test
+    void sqliteStatisticsCompatibilityDoesNotChangeSessionSchema() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.getStatistics(new StatisticsRequest(
+                    TimeRange.between(Instant.EPOCH, Instant.EPOCH.plusSeconds(1)), TimeScope.GLOBAL,
+                    Duration.ofMinutes(3), Instant.EPOCH.plusSeconds(1)));
+        }
+        try (Connection connection = openSqlite(); Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("PRAGMA table_info('" + TABLE_PREFIX + "_time')")) {
+            String joinType = null;
+            while (result.next()) {
+                if ("join_time".equals(result.getString("name"))) {
+                    joinType = result.getString("type");
+                }
+            }
+            assertEquals("TEXT", joinType, "Expected query-only compatibility without a schema migration");
         }
     }
 

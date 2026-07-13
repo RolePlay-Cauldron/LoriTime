@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 locale: 'zh-cn'
 prefix: '<#A4A4A4>[<#50CBAB>LoriTime<#A4A4A4>] '
 messages:
@@ -101,16 +101,16 @@ messages:
           expired: '<#FF3232>The pending admin action expired. Run the preview command again.'
           failure: '<#FF3232>The confirmed admin action failed.'
       stats:
-        commandUsage: '<#A4A4A4>用法：<red>/ltstats [users|sessions|usage|top|afk|retention] [time:<范围>] [server:<服务器>] [world:<世界>]。'
-        unsupported: '<#FF3232>当前存储不支持统计。'
-        error: '<#FF3232>无法计算统计。'
-        overview: '<#A4A4A4><newline>网络统计 — <#50CBAB>[range] <#A4A4A4>([scope])<newline>独立用户：<#50CBAB>[unique]<#A4A4A4> | 新用户：<#50CBAB>[new]<newline><#A4A4A4>会话：<#50CBAB>[sessions]<#A4A4A4> | 总游戏时间：<#50CBAB>[playtime]<newline><#A4A4A4>中位数：<#50CBAB>[median]<#A4A4A4> | 最长：<#50CBAB>[longest]<#A4A4A4> | 每用户会话：<#50CBAB>[peruser]<newline><#A4A4A4>跳出：<#50CBAB>[bounces] ([bounce])<#A4A4A4> | 峰值：<#50CBAB>[peak]<newline><#A4A4A4>AFK 玩家：<#50CBAB>[afkplayers]<#A4A4A4> | AFK 踢出：<#50CBAB>[afkkicks]'
-        users: '<#A4A4A4>用户 — [range] ([scope])<newline>独立：<#50CBAB>[unique]<#A4A4A4> | 新增：<#50CBAB>[new]<#A4A4A4> | 7 天留存：<#50CBAB>[retention]'
-        sessions: '<#A4A4A4>会话 — [range] ([scope])<newline>总数：<#50CBAB>[sessions]<#A4A4A4> | 中位数：<#50CBAB>[median]<#A4A4A4> | 最长：<#50CBAB>[longest]<newline><#A4A4A4>每用户：<#50CBAB>[peruser]<#A4A4A4> | 跳出：<#50CBAB>[bounces] ([bounce])<#A4A4A4> | 峰值：<#50CBAB>[peak]'
-        usage: '<#A4A4A4>使用情况 — [range] ([scope])<newline>[usage]'
-        top: '<#A4A4A4>游戏时间排行 — [range] ([scope])<newline>[top]'
-        afk: '<#A4A4A4>AFK — [range] ([scope])<newline>玩家：<#50CBAB>[afkplayers]<#A4A4A4> | 时段：<#50CBAB>[afkperiods]<#A4A4A4> | 时长：<#50CBAB>[afktime]<#A4A4A4> | 踢出：<#50CBAB>[afkkicks]'
-        retention: '<#A4A4A4>留存 — [range] ([scope])<newline>新用户：<#50CBAB>[new]<#A4A4A4> | 成熟 7 天留存：<#50CBAB>[retention]'
+        commandUsage: '<#A4A4A4>Use <red>/ltstats [users|sessions|usage|top|afk|retention] [time:<range>|calendar:<period>] [server:<server>] [world:<world>].'
+        unsupported: '<#FF3232>Statistics are not supported by the active storage.'
+        error: '<#FF3232>Statistics could not be calculated.'
+        overview: '<#A4A4A4><newline>Network statistics — <#50CBAB>[range] <#A4A4A4>([scope])<newline>Unique users: <#50CBAB>[unique]<#A4A4A4> | New users: <#50CBAB>[new]<newline><#A4A4A4>Sessions: <#50CBAB>[sessions]<#A4A4A4> | Playtime: <#50CBAB>[playtime]<newline><#A4A4A4>Median: <#50CBAB>[median]<#A4A4A4> | Longest: <#50CBAB>[longest]<#A4A4A4> | Sessions/user: <#50CBAB>[peruser]<newline><#A4A4A4>Bounces: <#50CBAB>[bounces] ([bounce])<#A4A4A4> | Peak: <#50CBAB>[peak]<newline><#A4A4A4>AFK players: <#50CBAB>[afkplayers]<#A4A4A4> | AFK kicks: <#50CBAB>[afkkicks]'
+        users: '<#A4A4A4>Users — [range] ([scope])<newline>Unique: <#50CBAB>[unique]<#A4A4A4> | New: <#50CBAB>[new]<#A4A4A4> | 7-day retention: <#50CBAB>[retention]'
+        sessions: '<#A4A4A4>Sessions — [range] ([scope])<newline>Total: <#50CBAB>[sessions]<#A4A4A4> | Median: <#50CBAB>[median]<#A4A4A4> | Longest: <#50CBAB>[longest]<newline><#A4A4A4>Per user: <#50CBAB>[peruser]<#A4A4A4> | Bounces: <#50CBAB>[bounces] ([bounce])<#A4A4A4> | Peak: <#50CBAB>[peak]'
+        usage: '<#A4A4A4>Usage — [range] ([scope])<newline>[usage]'
+        top: '<#A4A4A4>Top playtime — [range] ([scope])<newline>[top]'
+        afk: '<#A4A4A4>AFK — [range] ([scope])<newline>Players: <#50CBAB>[afkplayers]<#A4A4A4> | Periods: <#50CBAB>[afkperiods]<#A4A4A4> | Duration: <#50CBAB>[afktime]<#A4A4A4> | Kicks: <#50CBAB>[afkkicks]'
+        retention: '<#A4A4A4>Retention — [range] ([scope])<newline>New users: <#50CBAB>[new]<#A4A4A4> | Matured 7-day retention: <#50CBAB>[retention]'
       top:
         usage: '<#A4A4A4>使用 <red>/onlinetimetop [页数] <#A4A4A4>来查看在线时间排行榜。'
         gatheringData: '<#A4A4A4>收集数据并开始计算……'
