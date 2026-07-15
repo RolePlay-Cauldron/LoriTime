@@ -333,7 +333,7 @@ public class DataStorageManager {
         final WorldTable worldTable = new WorldTable(dbStorage.getTablePrefix() + "_world", serverTable);
         final TimeTable timeTable = new TimeTable(dbStorage.getTablePrefix() + "_time", playerTable, dbStorage.getDialect());
         final ManualAdjustmentTable adjustmentTable = new ManualAdjustmentTable(dbStorage.getTablePrefix() + "_time_adjustment", playerTable);
-        return new UnifiedDatabaseStorage(dbStorage.getProvider(), playerTable,
+        return new UnifiedDatabaseStorage(dbStorage.getProvider(), dbStorage.getTablePrefix(), playerTable,
                 serverTable, worldTable, timeTable, adjustmentTable, dbStorage.getDialect());
     }
 

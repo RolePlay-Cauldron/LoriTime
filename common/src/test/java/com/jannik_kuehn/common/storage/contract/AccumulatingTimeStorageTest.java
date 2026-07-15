@@ -27,15 +27,20 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SuppressWarnings({"PMD.CloseResource", "PMD.UnitTestContainsTooManyAsserts",
-        "PMD.UnitTestAssertionsShouldIncludeMessage", "PMD.CouplingBetweenObjects"})
+        "PMD.UnitTestAssertionsShouldIncludeMessage", "PMD.CouplingBetweenObjects", "PMD.DoNotUseThreads"})
 class AccumulatingTimeStorageTest {
 
     private static final UUID PLAYER = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
+
+    private static final UUID OTHER_PLAYER = UUID.fromString("a44f7fed-d003-4de6-b620-191c0fc22bb7");
 
     @Test
     void stopPersistsSingleSessionChunkWithContext() throws StorageException {
@@ -331,13 +336,66 @@ class AccumulatingTimeStorageTest {
         assertEquals(TimeEntryReason.PLAYER_LEAVE, storage.sessions.getFirst().reason());
     }
 
+    @Test
+    void checkpointCannotOverwriteSamePlayerLeaveAndDoesNotBlockAnotherPlayer() throws Exception {
+        final BlockingUnifiedStorage storage = new BlockingUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+        final StatisticsRequest request = new StatisticsRequest(TimeRange.between(Instant.EPOCH, Instant.MAX),
+                TimeScope.GLOBAL, Duration.ofMinutes(3), Instant.ofEpochMilli(9_000L));
+        final AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "survival", "world", 1_000L);
+        final Thread checkpoint = startThread(() -> accumulator.getStatistics(request), failure);
+        assertTrue(storage.autoFlushStarted.await(1, TimeUnit.SECONDS));
+
+        final CountDownLatch otherPlayerStarted = new CountDownLatch(1);
+        final Thread otherPlayer = startThread(() -> {
+            accumulator.startAccumulating(OTHER_PLAYER, "Other", "creative", "plots", 1_000L);
+            otherPlayerStarted.countDown();
+        }, failure);
+        assertTrue(otherPlayerStarted.await(1, TimeUnit.SECONDS), "Expected unrelated player not to wait for checkpoint");
+
+        final CountDownLatch samePlayerStopped = new CountDownLatch(1);
+        final Thread samePlayer = startThread(() -> {
+            accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 12_000L, TimeEntryReason.PLAYER_LEAVE);
+            samePlayerStopped.countDown();
+        }, failure);
+        assertFalse(samePlayerStopped.await(100, TimeUnit.MILLISECONDS), "Expected same player to wait for checkpoint");
+
+        storage.releaseAutoFlush.countDown();
+        checkpoint.join(1_000L);
+        otherPlayer.join(1_000L);
+        samePlayer.join(1_000L);
+
+        assertNull(failure.get());
+        assertEquals(TimeEntryReason.PLAYER_LEAVE, storage.sessions.getFirst().reason());
+        assertEquals(12_000L, storage.sessions.getFirst().stoppedAtMs());
+    }
+
+    private Thread startThread(final ThrowingAction action, final AtomicReference<Throwable> failure) {
+        final Thread thread = new Thread(() -> {
+            try {
+                action.run();
+            } catch (final StorageException ex) {
+                failure.compareAndSet(null, ex);
+            }
+        });
+        thread.start();
+        return thread;
+    }
+
     private AccumulatingTimeStorage accumulator(final FakeUnifiedStorage storage) {
         return new AccumulatingTimeStorage(mock(WrappedLogger.class), storage);
     }
 
-    private static final class FakeUnifiedStorage implements UnifiedStorage, StatisticsStorage {
+    @FunctionalInterface
+    private interface ThrowingAction {
+        void run() throws StorageException;
+    }
 
-        private final List<PlayerSessionChunk> sessions = new ArrayList<>();
+    private static class FakeUnifiedStorage implements UnifiedStorage, StatisticsStorage {
+
+        protected final List<PlayerSessionChunk> sessions = new ArrayList<>();
 
         private final Map<UUID, Long> adjustments = new java.util.HashMap<>();
 
@@ -476,7 +534,8 @@ class AccumulatingTimeStorageTest {
         }
 
         @Override
-        public void updateSession(final long sessionId, final long stoppedAtMs, final TimeEntryReason reason) {
+        public void updateSession(final long sessionId, final long stoppedAtMs, final TimeEntryReason reason)
+                throws StorageException {
             final int index = Math.toIntExact(sessionId);
             final PlayerSessionChunk previous = sessions.get(index);
             sessions.set(index, new PlayerSessionChunk(previous.uuid(), previous.name(), previous.server(), previous.world(),
@@ -514,6 +573,29 @@ class AccumulatingTimeStorageTest {
         @Override
         public void close() {
             closed = true;
+        }
+    }
+
+    private static final class BlockingUnifiedStorage extends FakeUnifiedStorage {
+        private final CountDownLatch autoFlushStarted = new CountDownLatch(1);
+
+        private final CountDownLatch releaseAutoFlush = new CountDownLatch(1);
+
+        @Override
+        public void updateSession(final long sessionId, final long stoppedAtMs, final TimeEntryReason reason)
+                throws StorageException {
+            if (reason == TimeEntryReason.AUTO_FLUSH) {
+                autoFlushStarted.countDown();
+                try {
+                    if (!releaseAutoFlush.await(1, TimeUnit.SECONDS)) {
+                        throw new StorageException("Timed out waiting to release checkpoint");
+                    }
+                } catch (final InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new StorageException(ex);
+                }
+            }
+            super.updateSession(sessionId, stoppedAtMs, reason);
         }
     }
 }

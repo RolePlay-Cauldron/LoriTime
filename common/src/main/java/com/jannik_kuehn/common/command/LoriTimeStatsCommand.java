@@ -4,6 +4,7 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
+import com.jannik_kuehn.common.command.core.CommandCompletions;
 import com.jannik_kuehn.common.command.core.CommandScopes;
 import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.exception.StorageException;
@@ -25,9 +26,14 @@ import java.util.Map;
 import java.util.OptionalLong;
 
 /** Canonical bounded network statistics command. */
-@SuppressWarnings({"PMD.CommentRequired", "PMD.LiteralsFirstInComparisons", "PMD.AvoidLiteralsInIfCondition"})
+@SuppressWarnings({"PMD.CommentRequired", "PMD.LiteralsFirstInComparisons", "PMD.AvoidLiteralsInIfCondition",
+        "PMD.TooManyMethods", "PMD.CyclomaticComplexity"})
 public class LoriTimeStatsCommand implements CommonCommand {
     private static final long DEFAULT_BOUNCE_SECONDS = 180L;
+
+    private static final String SERVER_SELECTOR = "server:";
+
+    private static final String WORLD_SELECTOR = "world:";
 
     private static final List<String> VIEWS = List.of("users", "sessions", "usage", "top", "afk", "retention");
 
@@ -76,6 +82,7 @@ public class LoriTimeStatsCommand implements CommonCommand {
                 render(sender, view, storage.getStatistics(new StatisticsRequest(range, scope,
                                 Duration.ofSeconds(bounce), selection.observedAt())), selection.label(), scope);
             } catch (final StorageException ex) {
+                log.error("Could not load LoriTime statistics.", ex);
                 send(sender, "error", Map.of());
             }
         }, () -> send(sender, "unsupported", Map.of()));
@@ -144,14 +151,54 @@ public class LoriTimeStatsCommand implements CommonCommand {
     @Override
     public List<String> handleTabComplete(final CommonSender source, final String... args) {
         final String current = args.length == 0 ? "" : args[args.length - 1].toLowerCase(Locale.ROOT);
+        final List<String> previous = Arrays.stream(args, 0, Math.max(0, args.length - 1))
+                .map(value -> value.toLowerCase(Locale.ROOT)).toList();
+        if (current.startsWith(SERVER_SELECTOR)) {
+            if (containsSelector(previous, SERVER_SELECTOR)) {
+                return List.of();
+            }
+            return prefixed(SERVER_SELECTOR, plugin.getScopeSuggestionCache().suggestServers(List.of(),
+                    current.substring(SERVER_SELECTOR.length())));
+        }
+        if (current.startsWith(WORLD_SELECTOR)) {
+            if (containsSelector(previous, WORLD_SELECTOR)) {
+                return List.of();
+            }
+            final String server = valueFor(previous, SERVER_SELECTOR);
+            final List<String> worlds = server == null
+                    ? plugin.getScopeSuggestionCache().suggestWorlds(List.of(), current.substring(WORLD_SELECTOR.length()))
+                    : plugin.getScopeSuggestionCache().suggestWorlds(server, List.of(), current.substring(WORLD_SELECTOR.length()));
+            return prefixed(WORLD_SELECTOR, worlds);
+        }
         final List<String> suggestions = new ArrayList<>();
         if (args.length <= 1) {
             suggestions.addAll(VIEWS);
         }
-        suggestions.addAll(List.of("time:1d", "calendar:today", "calendar:this-week", "calendar:this-month",
-                "calendar:2d", "calendar:2d-3d", "calendar:2w", "calendar:2w-3w", "calendar:2mo",
-                "calendar:2mo-3mo", "server:", "world:"));
-        return suggestions.stream().filter(value -> value.startsWith(current)).toList();
+        if (!containsSelector(previous, "time:") && !containsSelector(previous, "calendar:")) {
+            suggestions.addAll(List.of("time:1d", "calendar:today", "calendar:this-week", "calendar:this-month",
+                    "calendar:2d", "calendar:2d-3d", "calendar:2w", "calendar:2w-3w", "calendar:2mo",
+                    "calendar:2mo-3mo"));
+        }
+        if (!containsSelector(previous, SERVER_SELECTOR)) {
+            suggestions.add(SERVER_SELECTOR);
+        }
+        if (!containsSelector(previous, WORLD_SELECTOR)) {
+            suggestions.add(WORLD_SELECTOR);
+        }
+        return CommandCompletions.startsWith(suggestions, current);
+    }
+
+    private List<String> prefixed(final String prefix, final List<String> values) {
+        return values.stream().map(value -> prefix + value).toList();
+    }
+
+    private boolean containsSelector(final List<String> values, final String selector) {
+        return values.stream().anyMatch(value -> value.startsWith(selector));
+    }
+
+    private String valueFor(final List<String> values, final String selector) {
+        return values.stream().filter(value -> value.startsWith(selector))
+                .map(value -> value.substring(selector.length())).findFirst().orElse(null);
     }
 
     @Override

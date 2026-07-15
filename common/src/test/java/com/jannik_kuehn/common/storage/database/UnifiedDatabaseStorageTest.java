@@ -358,6 +358,9 @@ class UnifiedDatabaseStorageTest {
                     1_000L, 11_000L, TimeEntryReason.PLAYER_LEAVE));
             storage.addTime(new ManualTimeAdjustment(PLAYER, 5L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
                     TimeScope.server("survival")));
+            final Instant afkStart = Instant.parse("2026-07-15T10:00:00Z");
+            storage.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", afkStart);
+            storage.closeAfkPeriod(PLAYER, afkStart.plusSeconds(30), AfkPeriodEndReason.RESUMED);
             final StorageTransferRequest request = StorageTransferRequest.serverTransfer(List.of(
                     new StorageTransferMapping(StorageMaintenanceScope.server("survival"),
                             StorageMaintenanceScope.server("target"))));
@@ -369,6 +372,8 @@ class UnifiedDatabaseStorageTest {
                     "Expected source server to have no remaining time");
             assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER, TimeScope.server("target")),
                     "Expected target server to include moved data");
+            assertEquals(1, storage.getAfkPeriods(TimeRange.between(afkStart, afkStart.plusSeconds(31)),
+                    TimeScope.server("target")).size(), "Expected AFK period to move to target server");
             assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER), "Expected global total to remain unchanged");
         }
     }
@@ -382,6 +387,9 @@ class UnifiedDatabaseStorageTest {
                     1_000L, 11_000L, TimeEntryReason.PLAYER_LEAVE));
             storage.addTime(new ManualTimeAdjustment(PLAYER, 5L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
                     TimeScope.world("survival", "world")));
+            final Instant afkStart = Instant.parse("2026-07-15T10:00:00Z");
+            storage.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", afkStart);
+            storage.closeAfkPeriod(PLAYER, afkStart.plusSeconds(30), AfkPeriodEndReason.RESUMED);
             final StorageTransferRequest request = StorageTransferRequest.worldTransfer(List.of(
                     new StorageTransferMapping(StorageMaintenanceScope.world("survival", "world"),
                             StorageMaintenanceScope.world("target", "spawn"))));
@@ -393,6 +401,8 @@ class UnifiedDatabaseStorageTest {
                     "Expected source world to have no remaining time");
             assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER, TimeScope.world("target", "spawn")),
                     "Expected target world to include moved data");
+            assertEquals(1, storage.getAfkPeriods(TimeRange.between(afkStart, afkStart.plusSeconds(31)),
+                    TimeScope.world("target", "spawn")).size(), "Expected AFK period to move to target world");
             assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER), "Expected global total to remain unchanged");
         }
     }
@@ -774,6 +784,9 @@ class UnifiedDatabaseStorageTest {
                     TimeScope.server("survival")));
             source.addTime(new ManualTimeAdjustment(PLAYER, 3L, TimeEntryReason.MANUAL_ADJUSTMENT, "CONSOLE",
                     TimeScope.world("survival", "world")));
+            final Instant afkStart = Instant.parse("2026-07-15T10:00:00Z");
+            source.openAfkPeriod(PLAYER, "Lorias_", "survival", "world", afkStart);
+            source.closeAfkPeriod(PLAYER, afkStart.plusSeconds(30), AfkPeriodEndReason.RESUMED);
 
             final StorageMaintenancePreview preview = source.previewStorageTransferTo(target);
             source.applyStorageTransferTo(target, preview.confirmation());
@@ -784,6 +797,13 @@ class UnifiedDatabaseStorageTest {
                     "Expected copied server total");
             assertEquals(OptionalLong.of(13L), target.getTime(PLAYER, TimeScope.world("survival", "world")),
                     "Expected copied world total");
+            final var period = target.getAfkPeriods(TimeRange.between(afkStart, afkStart.plusSeconds(31)),
+                    TimeScope.world("survival", "world")).getFirst();
+            assertEquals(afkStart, period.startedAt(), "Expected copied AFK-period start");
+            assertEquals(afkStart.plusSeconds(30), period.endedAt().orElseThrow(),
+                    "Expected copied AFK-period end");
+            assertEquals(AfkPeriodEndReason.RESUMED, period.endReason().orElseThrow(),
+                    "Expected copied AFK-period reason");
             assertEquals(OptionalLong.of(18L), source.getTime(PLAYER), "Expected source data to remain");
         }
     }
@@ -977,7 +997,7 @@ class UnifiedDatabaseStorageTest {
         final WorldTable worldTable = new WorldTable(TABLE_PREFIX + "_world", serverTable);
         final TimeTable timeTable = new TimeTable(TABLE_PREFIX + "_time", playerTable, databaseStorage.getDialect());
         final ManualAdjustmentTable adjustmentTable = new ManualAdjustmentTable(TABLE_PREFIX + "_time_adjustment", playerTable);
-        return new UnifiedDatabaseStorage(databaseStorage.getProvider(), playerTable, serverTable, worldTable,
+        return new UnifiedDatabaseStorage(databaseStorage.getProvider(), databaseStorage.getTablePrefix(), playerTable, serverTable, worldTable,
                 timeTable, adjustmentTable, databaseStorage.getDialect());
     }
 

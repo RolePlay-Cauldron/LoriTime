@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings({"PMD.UnitTestContainsTooManyAsserts", "PMD.UseExplicitTypes",
         "PMD.UnitTestAssertionsShouldIncludeMessage"})
@@ -36,7 +36,7 @@ class StatisticsAggregatorTest {
                 Optional.of(START.plusSeconds(80)), Optional.of(AfkPeriodEndReason.KICKED));
 
         final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
-                TimeRange.between(START, START.plusSeconds(180)), TimeScope.GLOBAL, Duration.ofSeconds(90)),
+                        TimeRange.between(START, START.plusSeconds(180)), TimeScope.GLOBAL, Duration.ofSeconds(90)),
                 rows, List.of(afk));
 
         assertEquals(2, result.uniqueUsers());
@@ -55,7 +55,7 @@ class StatisticsAggregatorTest {
         final var row = row(PLAYER, "Lorias_", "survival", "world", -60, 60,
                 TimeEntryReason.AUTO_FLUSH, START.minusSeconds(60));
         final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
-                TimeRange.between(START, START.plusSeconds(30)), TimeScope.GLOBAL, Duration.ofMinutes(3)),
+                        TimeRange.between(START, START.plusSeconds(30)), TimeScope.GLOBAL, Duration.ofMinutes(3)),
                 List.of(row), List.of());
 
         assertEquals(Duration.ofSeconds(30), result.totalPlayTime());
@@ -72,7 +72,7 @@ class StatisticsAggregatorTest {
                 Optional.of(START.plusSeconds(180)), Optional.of(AfkPeriodEndReason.RESUMED));
 
         final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
-                TimeRange.between(START, START.plusSeconds(300)), TimeScope.GLOBAL, Duration.ofSeconds(90)),
+                        TimeRange.between(START, START.plusSeconds(300)), TimeScope.GLOBAL, Duration.ofSeconds(90)),
                 rows, List.of(afk));
 
         assertEquals(1, result.sessions());
@@ -95,6 +95,22 @@ class StatisticsAggregatorTest {
         assertEquals(Duration.ofSeconds(120), result.longestSession());
         assertEquals(0, result.bounces(), "Active sessions must not be classified as bounces");
         assertEquals(1, result.peakConcurrent());
+    }
+
+    @Test
+    void calculatesRetentionOnlyForMaturedNewUsersWhoReturnWithinSevenDays() {
+        final List<SessionHistoryRow> rows = List.of(
+                row(PLAYER, "Lorias_", "survival", "world", 0, 60, TimeEntryReason.PLAYER_LEAVE, START),
+                row(PLAYER, "Lorias_", "survival", "world", 6 * 86_400, 6 * 86_400 + 60,
+                        TimeEntryReason.PLAYER_LEAVE, START),
+                row(OTHER, "Other", "creative", "plots", 0, 60, TimeEntryReason.PLAYER_LEAVE, START));
+
+        final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
+                        TimeRange.between(START, START.plus(Duration.ofDays(8))), TimeScope.GLOBAL, Duration.ofMinutes(3)),
+                rows, List.of());
+
+        assertEquals(2, result.newUsers());
+        assertEquals(0.5D, result.retentionRate());
     }
 
     private SessionHistoryRow row(final UUID uuid, final String name, final String server, final String world,

@@ -1,10 +1,13 @@
 package com.jannik_kuehn.common.command;
 
 import com.github.roleplaycauldron.spellbook.core.logger.LoggerFactory;
+import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeScope;
+import com.jannik_kuehn.common.command.completion.ScopeSuggestionCache;
 import com.jannik_kuehn.common.config.Configuration;
 import com.jannik_kuehn.common.config.localization.Localization;
+import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.platform.CommonSender;
 import com.jannik_kuehn.common.storage.contract.StatisticsStorage;
 import com.jannik_kuehn.common.storage.model.StatisticsRequest;
@@ -22,11 +25,12 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
 
 @SuppressWarnings({"PMD.UnitTestAssertionsShouldIncludeMessage", "PMD.UnitTestContainsTooManyAsserts"})
 class LoriTimeStatsCommandTest {
@@ -42,6 +46,10 @@ class LoriTimeStatsCommandTest {
 
     private CommonSender sender;
 
+    private WrappedLogger log;
+
+    private ScopeSuggestionCache scopeSuggestionCache;
+
     @BeforeEach
     void setUp() throws Exception {
         plugin = mock(LoriTimePlugin.class);
@@ -49,7 +57,12 @@ class LoriTimeStatsCommandTest {
         localization = mock(Localization.class);
         storage = mock(StatisticsStorage.class);
         sender = mock(CommonSender.class);
-        when(plugin.getLoggerFactory()).thenReturn(new LoggerFactory(Logger.getLogger("test")));
+        log = mock(WrappedLogger.class);
+        final LoggerFactory loggerFactory = mock(LoggerFactory.class);
+        when(loggerFactory.create(LoriTimeStatsCommand.class)).thenReturn(log);
+        when(plugin.getLoggerFactory()).thenReturn(loggerFactory);
+        scopeSuggestionCache = new ScopeSuggestionCache();
+        when(plugin.getScopeSuggestionCache()).thenReturn(scopeSuggestionCache);
         when(plugin.getConfig()).thenReturn(config);
         when(plugin.getParser()).thenReturn(new TimeParser.Builder()
                 .addUnit(60L, "m").addUnit(86_400L, "d").addUnit(604_800L, "w").build());
@@ -115,6 +128,27 @@ class LoriTimeStatsCommandTest {
         assertTrue(root.contains("calendar:this-month"));
         assertTrue(root.contains("calendar:2mo"));
         assertTrue(root.contains("calendar:2d-3d"));
+    }
+
+    @Test
+    void completionUsesCachedScopesAndOmitsUsedSelectors() {
+        scopeSuggestionCache.replaceStoredNames(java.util.Set.of("survival"),
+                Map.of("survival", java.util.Set.of("world", "nether")));
+
+        assertEquals(List.of("server:survival"), command().handleTabComplete(sender, "server:su"));
+        assertEquals(List.of("world:world"), command().handleTabComplete(sender, "server:survival", "world:wo"));
+        assertEquals(List.of(), command().handleTabComplete(sender, "server:survival", "server:"));
+        assertEquals(List.of(), command().handleTabComplete(sender, "calendar:today", "calendar:"));
+    }
+
+    @Test
+    void storageFailureIsLoggedBeforeRenderingError() throws Exception {
+        when(storage.getStatistics(any())).thenThrow(new StorageException("database unavailable"));
+
+        command().execute(sender);
+
+        verify(log).error(eq("Could not load LoriTime statistics."), any(StorageException.class));
+        verify(sender).sendMessage(any(Component.class));
     }
 
     @Test

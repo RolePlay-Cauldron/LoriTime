@@ -69,10 +69,10 @@ public class TimeAccumulatorVelocityListener {
         final long now = System.currentTimeMillis();
         loriTimePlugin.getScheduler().runAsyncOnce(() -> {
             try {
-        final TimeEntryReason reason = loriTimePlugin.consumeAfkKick(uuid)
+                final TimeEntryReason reason = loriTimePlugin.consumeAfkKick(uuid)
                         ? TimeEntryReason.PLAYER_AFK_KICK : TimeEntryReason.PLAYER_LEAVE;
-        loriTimePlugin.closeAfkPeriod(uuid, reason == TimeEntryReason.PLAYER_AFK_KICK
-                ? AfkPeriodEndReason.KICKED : AfkPeriodEndReason.DISCONNECTED);
+                loriTimePlugin.closeAfkPeriod(uuid, reason == TimeEntryReason.PLAYER_AFK_KICK
+                        ? AfkPeriodEndReason.KICKED : AfkPeriodEndReason.DISCONNECTED);
                 loriTimePlugin.getAccumulator().stopAccumulatingAndSaveOnlineTime(uuid, now, reason);
                 loriTimePlugin.getPlayerConverter().removePlayerFromCache(uuid);
             } catch (final StorageException ex) {

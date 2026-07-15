@@ -159,6 +159,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
      * Creates a database-backed unified storage instance.
      *
      * @param provider        the connection provider.
+     * @param tablePrefix     normalized database table prefix.
      * @param playerTable     the player table helper.
      * @param serverTable     the server table helper.
      * @param worldTable      the world table helper.
@@ -167,6 +168,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
      * @param dialect         the database dialect.
      */
     public UnifiedDatabaseStorage(final LoriTimeConnectionProvider provider,
+                                  final String tablePrefix,
                                   final PlayerTable playerTable,
                                   final ServerTable serverTable,
                                   final WorldTable worldTable,
@@ -187,9 +189,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         this.worldTableName = worldTable.toString();
         this.timeTableName = timeTable.toString();
         this.adjustmentTableName = adjustmentTable.toString();
-        final String suffix = "_time_adjustment";
-        this.afkPeriodTableName = this.adjustmentTableName.substring(0,
-                this.adjustmentTableName.length() - suffix.length()) + "_afk_period";
+        this.afkPeriodTableName = tablePrefix + "_afk_period";
     }
 
     @Override
@@ -1297,6 +1297,27 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         }
     }
 
+    private void insertSnapshotAfkPeriods(final Connection connection, final List<AfkPeriodRow> periods)
+            throws SQLException {
+        try (PreparedStatement insert = connection.prepareStatement(
+                "INSERT INTO `" + afkPeriodTableName + "` (`player_id`, `world_id`, `started_at`, `ended_at`, "
+                        + "`end_reason`) VALUES ((SELECT `id` FROM `" + playerTableName + "` WHERE `uuid` = ?), "
+                        + "(SELECT w.`id` FROM `" + worldTableName + "` w "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "WHERE s.`server` = ? AND w.`world` = ?), ?, ?, ?)")) {
+            for (final AfkPeriodRow period : periods) {
+                insert.setBytes(1, period.playerUuid());
+                insert.setString(2, period.server());
+                insert.setString(3, period.world());
+                insert.setObject(4, period.startedAt());
+                insert.setObject(5, period.endedAt());
+                insert.setString(6, period.endReason());
+                insert.addBatch();
+            }
+            insert.executeBatch();
+        }
+    }
+
     private void copySnapshotHistory(final Connection sourceConnection,
                                      final UnifiedDatabaseStorage sourceStorage,
                                      final Connection targetConnection) throws SQLException {
@@ -1315,6 +1336,14 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             insertSnapshotAdjustments(targetConnection, adjustments);
             offset += adjustments.size();
         } while (adjustments.size() == STORAGE_TRANSFER_BATCH_SIZE);
+
+        offset = 0L;
+        List<AfkPeriodRow> periods;
+        do {
+            periods = sourceStorage.readSnapshotAfkPeriods(sourceConnection, offset);
+            insertSnapshotAfkPeriods(targetConnection, periods);
+            offset += periods.size();
+        } while (periods.size() == STORAGE_TRANSFER_BATCH_SIZE);
     }
 
     private List<SessionRow> readSnapshotSessions(final Connection connection, final long offset) throws SQLException {
@@ -1363,6 +1392,29 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             }
         }
         return adjustments;
+    }
+
+    private List<AfkPeriodRow> readSnapshotAfkPeriods(final Connection connection, final long offset)
+            throws SQLException {
+        final List<AfkPeriodRow> periods = new ArrayList<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT p.`uuid`, s.`server`, w.`world`, a.`started_at`, a.`ended_at`, a.`end_reason` "
+                        + "FROM `" + afkPeriodTableName + "` a "
+                        + "JOIN `" + playerTableName + "` p ON p.`id` = a.`player_id` "
+                        + "JOIN `" + worldTableName + "` w ON w.`id` = a.`world_id` "
+                        + "JOIN `" + serverTableName + "` s ON s.`id` = w.`server_id` "
+                        + "ORDER BY a.`id` LIMIT ? OFFSET ?")) {
+            select.setInt(1, STORAGE_TRANSFER_BATCH_SIZE);
+            select.setLong(2, offset);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    periods.add(new AfkPeriodRow(result.getBytes("uuid"), result.getString("server"),
+                            result.getString("world"), result.getObject("started_at"), result.getObject("ended_at"),
+                            result.getString("end_reason")));
+                }
+            }
+        }
+        return periods;
     }
 
     private StorageMaintenancePreview buildDeletePreview(final Connection connection,
@@ -1599,13 +1651,15 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                 || countRows(connection, serverTableName) > 0
                 || countRows(connection, worldTableName) > 0
                 || countRows(connection, timeTableName) > 0
-                || countRows(connection, adjustmentTableName) > 0;
+                || countRows(connection, adjustmentTableName) > 0
+                || countRows(connection, afkPeriodTableName) > 0;
     }
 
     private boolean storageHasTransferBlockingData(final Connection connection) throws SQLException {
         return playerTable.hasAnyData(connection)
                 || countRows(connection, timeTableName) > 0
                 || countRows(connection, adjustmentTableName) > 0
+                || countRows(connection, afkPeriodTableName) > 0
                 || singleLong(connection,
                 "SELECT COUNT(*) FROM `" + serverTableName + "` WHERE `server` <> 'default'") > 0
                 || singleLong(connection,
@@ -1754,13 +1808,18 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         try (PreparedStatement updateTime = connection.prepareStatement(
                 "UPDATE `" + timeTableName + "` SET `world_id` = ? WHERE `world_id` = ?");
              PreparedStatement updateAdjustments = connection.prepareStatement(
-                     "UPDATE `" + adjustmentTableName + "` SET `world_id` = ? WHERE `world_id` = ?")) {
+                     "UPDATE `" + adjustmentTableName + "` SET `world_id` = ? WHERE `world_id` = ?");
+             PreparedStatement updateAfkPeriods = connection.prepareStatement(
+                     "UPDATE `" + afkPeriodTableName + "` SET `world_id` = ? WHERE `world_id` = ?")) {
             updateTime.setLong(1, targetWorldId);
             updateTime.setLong(2, sourceWorldId);
             updateTime.executeUpdate();
             updateAdjustments.setLong(1, targetWorldId);
             updateAdjustments.setLong(2, sourceWorldId);
             updateAdjustments.executeUpdate();
+            updateAfkPeriods.setLong(1, targetWorldId);
+            updateAfkPeriods.setLong(2, sourceWorldId);
+            updateAfkPeriods.executeUpdate();
         }
     }
 
@@ -1780,6 +1839,9 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                     range.get(), sourceWorldId)) {
                 updateRowWorldReference(connection, adjustmentTableName, adjustmentId, targetWorldId);
             }
+            for (final long periodId : matchingAfkPeriodIds(connection, playerId, sourceWorldId, range.get())) {
+                updateRowWorldReference(connection, afkPeriodTableName, periodId, targetWorldId);
+            }
             return;
         }
         try (PreparedStatement updateTime = connection.prepareStatement(
@@ -1788,11 +1850,18 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
              PreparedStatement updateAdjustments = connection.prepareStatement(
                      "UPDATE `" + adjustmentTableName + "` SET `world_id` = ? "
                              + "WHERE `player_id` = ? AND `scope_type` = 'WORLD' AND `world_id` = ?"
-                             + adjustmentRangeCondition(range))) {
+                             + adjustmentRangeCondition(range));
+             PreparedStatement updateAfkPeriods = connection.prepareStatement(
+                     "UPDATE `" + afkPeriodTableName + "` SET `world_id` = ? "
+                             + "WHERE `player_id` = ? AND `world_id` = ?")) {
             setUpdateWorldReferenceParams(updateTime, targetWorldId, playerId, sourceWorldId, range);
             updateTime.executeUpdate();
             setUpdateWorldReferenceParams(updateAdjustments, targetWorldId, playerId, sourceWorldId, range);
             updateAdjustments.executeUpdate();
+            updateAfkPeriods.setLong(1, targetWorldId);
+            updateAfkPeriods.setLong(2, playerId);
+            updateAfkPeriods.setLong(3, sourceWorldId);
+            updateAfkPeriods.executeUpdate();
         }
     }
 
@@ -2095,7 +2164,8 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
 
     private void deleteWorldIfUnreferenced(final Connection connection, final long worldId) throws SQLException {
         if (singleLong(connection, "SELECT COUNT(*) FROM `" + timeTableName + "` WHERE `world_id` = ?", worldId) > 0
-                || singleLong(connection, "SELECT COUNT(*) FROM `" + adjustmentTableName + "` WHERE `world_id` = ?", worldId) > 0) {
+                || singleLong(connection, "SELECT COUNT(*) FROM `" + adjustmentTableName + "` WHERE `world_id` = ?", worldId) > 0
+                || singleLong(connection, "SELECT COUNT(*) FROM `" + afkPeriodTableName + "` WHERE `world_id` = ?", worldId) > 0) {
             return;
         }
         try (PreparedStatement delete = connection.prepareStatement("DELETE FROM `" + worldTableName + "` WHERE `id` = ?")) {
@@ -2171,6 +2241,29 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             try (ResultSet result = select.executeQuery()) {
                 while (result.next()) {
                     if (range.contains(readInstant(result, "created_at"))) {
+                        ids.add(result.getLong("id"));
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    private List<Long> matchingAfkPeriodIds(final Connection connection,
+                                            final long playerId,
+                                            final long worldId,
+                                            final TimeRange range) throws SQLException {
+        final List<Long> ids = new ArrayList<>();
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT `id`, `started_at`, `ended_at` FROM `" + afkPeriodTableName
+                        + "` WHERE `player_id` = ? AND `world_id` = ?")) {
+            select.setLong(1, playerId);
+            select.setLong(2, worldId);
+            try (ResultSet result = select.executeQuery()) {
+                while (result.next()) {
+                    final Object endedAt = result.getObject("ended_at");
+                    if (endedAt != null && !readInstant(result, "started_at").isBefore(range.startInclusive())
+                            && readInstant(result, "ended_at").isBefore(range.endExclusive())) {
                         ids.add(result.getLong("id"));
                     }
                 }
@@ -2339,5 +2432,13 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                                  byte[] actorUuid,
                                  String actorName,
                                  Object createdAt) {
+    }
+
+    private record AfkPeriodRow(byte[] playerUuid,
+                                String server,
+                                String world,
+                                Object startedAt,
+                                Object endedAt,
+                                String endReason) {
     }
 }

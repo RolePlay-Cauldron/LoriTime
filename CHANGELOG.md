@@ -8,10 +8,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Added `/ltstats` with a default 24-hour overview and focused user, session, usage, top-player, AFK, and retention views
 - Added durable, scoped AFK-period history for SQLite, MySQL, and MariaDB through an additive schema migration
-- Added `stats.default-range` (`1d`) and `stats.bounce-threshold` (`3m`) configuration defaults
+- Added `stats.default-range` (`calendar:today`) and `stats.bounce-threshold` (`3m`) configuration defaults
 ### Changed
 - Logical statistics sessions now merge adjacent world and backend-server segments; stale AFK periods recover as `SHUTDOWN`
-- Versioned and migrated statistics settings, localized messages, and command aliases for to support the new stats-feature
+- Versioned and migrated statistics settings, localized messages, and command aliases to support the new stats feature
 ### Deprecated
 ### Removed
 ### Fixed
