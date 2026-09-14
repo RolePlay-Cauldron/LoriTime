@@ -174,7 +174,7 @@
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
         <artifactId>spellbook-core</artifactId>
-        <version>0.0.11-alpha</version>
+        <version>0.0.12-alpha</version>
       </dependency>
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
