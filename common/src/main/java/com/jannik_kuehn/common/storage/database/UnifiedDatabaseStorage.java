@@ -2236,8 +2236,6 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             for (int i = 0; i < params.length; i++) {
                 if (params[i] instanceof final Long value) {
                     select.setLong(i + 1, value);
-                } else if (params[i] instanceof final Timestamp value) {
-                    select.setTimestamp(i + 1, value);
                 } else {
                     select.setString(i + 1, params[i].toString());
                 }
@@ -2334,9 +2332,6 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
 
     private Instant readInstant(final ResultSet result, final String column) throws SQLException {
         final Object value = result.getObject(column);
-        if (value instanceof final Timestamp timestamp) {
-            return timestamp.toInstant();
-        }
         if (value instanceof final Number number) {
             return Instant.ofEpochMilli(number.longValue());
         }
@@ -2360,7 +2355,10 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                 throw new SQLException("Unsupported timestamp value: " + text, exception);
             }
         }
-        throw new SQLException("Unsupported timestamp value for column " + column + ": " + value);
+        if (value == null) {
+            throw new SQLException("Unsupported timestamp value for column " + column + ": null");
+        }
+        return result.getTimestamp(column).toInstant();
     }
 
     private String sessionRangeCondition(final Optional<TimeRange> range) {

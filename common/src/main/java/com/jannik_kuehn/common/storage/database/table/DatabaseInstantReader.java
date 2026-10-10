@@ -18,9 +18,6 @@ final class DatabaseInstantReader {
 
     /* default */ static Instant readInstant(final ResultSet result, final String column) throws SQLException {
         final Object value = result.getObject(column);
-        if (value instanceof Timestamp timestamp) {
-            return timestamp.toInstant();
-        }
         if (value instanceof Number number) {
             return Instant.ofEpochMilli(number.longValue());
         }
@@ -30,7 +27,10 @@ final class DatabaseInstantReader {
         if (value instanceof String text) {
             return readInstant(text);
         }
-        throw new SQLException("Unsupported timestamp value for column " + column + ": " + value);
+        if (value == null) {
+            throw new SQLException("Unsupported timestamp value for column " + column + ": null");
+        }
+        return result.getTimestamp(column).toInstant();
     }
 
     private static Instant readInstant(final String text) throws SQLException {

@@ -175,28 +175,32 @@ public class PlayerTable {
                 while (result.next()) {
                     identities.add(new RecentPlayerIdentity(UuidUtil.fromBytes(result.getBytes("uuid")),
                             result.getString("name"),
-                            parseLastSeen(result.getObject("last_seen"))));
+                            parseLastSeen(result)));
                 }
             }
         }
         return identities;
     }
 
-    private Optional<Instant> parseLastSeen(final Object value) {
-        if (value instanceof final Timestamp timestamp) {
-            return Optional.of(timestamp.toInstant());
-        }
+    private Optional<Instant> parseLastSeen(final ResultSet result) throws SQLException {
+        final Object value = result.getObject("last_seen");
         if (value instanceof final Number number) {
             return Optional.of(Instant.ofEpochMilli(number.longValue()));
         }
-        if (value instanceof final String text && !text.isBlank()) {
+        if (value instanceof final String text) {
+            if (text.isBlank()) {
+                return Optional.empty();
+            }
             try {
                 return Optional.of(Instant.parse(text));
             } catch (final DateTimeParseException ignored) {
                 return parseSqlTimestamp(text);
             }
         }
-        return Optional.empty();
+        if (value == null) {
+            return Optional.empty();
+        }
+        return Optional.of(result.getTimestamp("last_seen").toInstant());
     }
 
     private Optional<Instant> parseSqlTimestamp(final String text) {

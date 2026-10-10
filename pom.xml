@@ -109,14 +109,14 @@
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>33.7.1-jre</version>
+        <version>33.7.2-jre</version>
         <scope>provided</scope>
       </dependency>
 
       <dependency>
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-lang3</artifactId>
-        <version>3.20.0</version>
+        <version>3.21.0</version>
         <scope>provided</scope>
       </dependency>
 
@@ -145,7 +145,7 @@
       <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-bom</artifactId>
-        <version>5.23.0</version>
+        <version>5.24.0</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -166,7 +166,7 @@
       <dependency>
         <groupId>com.velocitypowered</groupId>
         <artifactId>velocity-api</artifactId>
-        <version>4.1.2-SNAPSHOT</version>
+        <version>4.2.0</version>
         <scope>provided</scope>
       </dependency>
 
@@ -174,12 +174,12 @@
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
         <artifactId>spellbook-core</artifactId>
-        <version>0.0.11-alpha</version>
+        <version>0.0.12-alpha</version>
       </dependency>
       <dependency>
         <groupId>com.github.roleplay-cauldron</groupId>
         <artifactId>spellbook-database</artifactId>
-        <version>0.0.11-alpha</version>
+        <version>0.0.12-alpha</version>
       </dependency>
 
       <!-- Module specific imports -->
@@ -243,13 +243,13 @@
       <dependency>
         <groupId>org.yaml</groupId>
         <artifactId>snakeyaml</artifactId>
-        <version>2.6</version>
+        <version>2.7</version>
         <scope>provided</scope>
       </dependency>
       <dependency>
         <groupId>org.apache.maven</groupId>
         <artifactId>maven-artifact</artifactId>
-        <version>4.0.0-rc-6</version>
+        <version>4.0.0-rc-7</version>
         <scope>provided</scope>
         <exclusions>
           <exclusion>
@@ -314,7 +314,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>flatten-maven-plugin</artifactId>
-        <version>1.7.3</version>
+        <version>1.8.0</version>
         <configuration>
           <updatePomFile>true</updatePomFile>
           <flattenMode>resolveCiFriendliesOnly</flattenMode>
@@ -548,7 +548,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.15.0</version>
+          <version>3.16.0</version>
           <configuration>
             <release>${java.api.version}</release>
           </configuration>
@@ -556,7 +556,7 @@
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
           <artifactId>flatten-maven-plugin</artifactId>
-          <version>1.7.3</version>
+          <version>1.8.0</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -571,12 +571,12 @@
             <dependency>
               <groupId>net.sourceforge.pmd</groupId>
               <artifactId>pmd-core</artifactId>
-              <version>7.27.0</version>
+              <version>7.28.0</version>
             </dependency>
             <dependency>
               <groupId>net.sourceforge.pmd</groupId>
               <artifactId>pmd-java</artifactId>
-              <version>7.27.0</version>
+              <version>7.28.0</version>
             </dependency>
             <dependency>
               <groupId>com.jannik_kuehn</groupId>
@@ -595,7 +595,7 @@
         <plugin>
           <groupId>com.github.spotbugs</groupId>
           <artifactId>spotbugs-maven-plugin</artifactId>
-          <version>4.10.4.0</version>
+          <version>4.10.4.1</version>
           <dependencies>
             <dependency>
               <groupId>com.jannik_kuehn</groupId>
@@ -617,7 +617,7 @@
             <dependency>
               <groupId>com.puppycrawl.tools</groupId>
               <artifactId>checkstyle</artifactId>
-              <version>14.1.0</version>
+              <version>14.3.0</version>
             </dependency>
             <dependency>
               <groupId>com.jannik_kuehn</groupId>
@@ -664,25 +664,27 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-jar-plugin</artifactId>
-          <version>3.5.0</version>
+          <version>3.5.1</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.5.6</version>
+          <version>3.6.0</version>
           <configuration>
             <parallel>all</parallel>
+            <threadCount>4</threadCount>
+            <perCoreThreadCount>false</perCoreThreadCount>
           </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-install-plugin</artifactId>
-          <version>3.1.4</version>
+          <version>3.2.0</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-deploy-plugin</artifactId>
-          <version>3.1.4</version>
+          <version>3.2.0</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -707,7 +709,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-report-plugin</artifactId>
-          <version>3.5.6</version>
+          <version>3.6.0</version>
         </plugin>
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
