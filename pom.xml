@@ -353,7 +353,9 @@
                 <filter>
                   <artifact>*</artifact>
                   <excludes>
-                    <exclude>META-INF/**</exclude>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
                   </excludes>
                 </filter>
                 <filter>
@@ -372,6 +374,7 @@
                   <artifact>org.mariadb.jdbc</artifact>
                   <includes>
                     <include>org/mariadb/jdbc/**</include>
+                    <include>META-INF/services/**</include>
                   </includes>
                 </filter>
                 <filter>
@@ -425,6 +428,9 @@
                   <shadedPattern>${project.groupId}</shadedPattern>
                 </relocation>
               </relocations>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
             </configuration>
           </execution>
         </executions>
