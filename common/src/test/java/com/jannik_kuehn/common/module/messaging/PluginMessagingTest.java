@@ -130,9 +130,9 @@ class PluginMessagingTest {
         final LoriTimePlugin plugin = pluginWithInlineScheduler();
         final TimeAccumulator accumulator = mock(TimeAccumulator.class);
         when(plugin.getAccumulator()).thenReturn(accumulator);
-        final com.jannik_kuehn.common.platform.CommonServer server = mock(com.jannik_kuehn.common.platform.CommonServer.class);
+        final CommonServer server = mock(CommonServer.class);
         when(plugin.getServer()).thenReturn(server);
-        when(server.getPlayer(PLAYER)).thenReturn(Optional.of(mock(com.jannik_kuehn.common.platform.CommonPlayerSender.class)));
+        when(server.getPlayer(PLAYER)).thenReturn(Optional.of(mock(CommonPlayerSender.class)));
         final CapturingPluginMessaging messaging = new CapturingPluginMessaging(plugin);
 
         messaging.processPluginMessage("loritime:storage", messaging.data(PLAYER, StorageMessageType.TAGS.wireValue(),

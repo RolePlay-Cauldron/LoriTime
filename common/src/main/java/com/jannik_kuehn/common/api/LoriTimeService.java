@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Stable public facade for third-party LoriTime integrations.
  */
+@SuppressWarnings("PMD.TooManyMethods")
 public interface LoriTimeService {
     /**
      * Actor name used for API adjustments without an explicit actor.
@@ -206,8 +207,9 @@ public interface LoriTimeService {
      * @throws UnsupportedOperationException if the implementation does not support tracking tags
      * @since 2.3.0
      */
+    @SuppressWarnings("PMD.LinguisticNaming")
     default CompletableFuture<Void> setTrackingTag(final UUID uniqueId, final String key, final String value) {
-        throw new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
+        throw tagsUnsupported();
     }
 
     /**
@@ -220,7 +222,7 @@ public interface LoriTimeService {
      * @since 2.3.0
      */
     default CompletableFuture<Void> clearTrackingTag(final UUID uniqueId, final String key) {
-        throw new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
+        throw tagsUnsupported();
     }
 
     /**
@@ -237,7 +239,7 @@ public interface LoriTimeService {
      */
     default CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
                                                                 final String tagKey, final String tagValue) {
-        throw new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
+        throw tagsUnsupported();
     }
 
     /**
@@ -256,6 +258,10 @@ public interface LoriTimeService {
     default CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
                                                                 final TimeRange range, final String tagKey,
                                                                 final String tagValue) {
-        throw new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
+        throw tagsUnsupported();
+    }
+
+    private static UnsupportedOperationException tagsUnsupported() {
+        return new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
     }
 }

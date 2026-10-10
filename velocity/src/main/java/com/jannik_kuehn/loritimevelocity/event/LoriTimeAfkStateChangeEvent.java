@@ -8,7 +8,7 @@ import java.util.UUID;
  *
  * @param playerId the player UUID
  * @param afk      {@code true} when the player became AFK, {@code false} when they resumed
- * @param at       when the state changed
+ * @param occurredAt       when the state changed
  */
-public record LoriTimeAfkStateChangeEvent(UUID playerId, boolean afk, Instant at) {
+public record LoriTimeAfkStateChangeEvent(UUID playerId, boolean afk, Instant occurredAt) {
 }

@@ -7,7 +7,7 @@ import java.util.UUID;
  * LoriTime stopped tracking a player, because they left or counting stopped, for example while AFK.
  *
  * @param playerId the player UUID
- * @param at       when tracking stopped
+ * @param occurredAt       when tracking stopped
  */
-public record LoriTimeSessionEndEvent(UUID playerId, Instant at) {
+public record LoriTimeSessionEndEvent(UUID playerId, Instant occurredAt) {
 }

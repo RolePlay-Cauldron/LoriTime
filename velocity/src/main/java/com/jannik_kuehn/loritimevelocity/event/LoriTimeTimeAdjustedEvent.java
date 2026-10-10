@@ -14,8 +14,8 @@ import java.util.UUID;
  * @param scope     the adjustment scope
  * @param reason    the machine-readable adjustment reason
  * @param actorName the actor display name
- * @param at        when the adjustment was stored
+ * @param occurredAt        when the adjustment was stored
  */
 public record LoriTimeTimeAdjustedEvent(UUID playerId, Duration amount, TimeScope scope, String reason,
-                                        String actorName, Instant at) {
+                                        String actorName, Instant occurredAt) {
 }

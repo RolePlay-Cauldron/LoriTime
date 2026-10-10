@@ -18,18 +18,18 @@ public abstract class LoriTimeEvent extends Event {
     /**
      * When the event happened.
      */
-    private final Instant at;
+    private final Instant occurredAt;
 
     /**
      * Creates the event. It is asynchronous when created off the primary thread.
      *
      * @param playerId the player UUID
-     * @param at       when the event happened
+     * @param occurredAt       when the event happened
      */
-    protected LoriTimeEvent(final UUID playerId, final Instant at) {
+    protected LoriTimeEvent(final UUID playerId, final Instant occurredAt) {
         super(!Bukkit.isPrimaryThread());
         this.playerId = playerId;
-        this.at = at;
+        this.occurredAt = occurredAt;
     }
 
     /**
@@ -46,7 +46,7 @@ public abstract class LoriTimeEvent extends Event {
      *
      * @return the event instant
      */
-    public Instant getAt() {
-        return at;
+    public Instant getOccurredAt() {
+        return occurredAt;
     }
 }

@@ -5,6 +5,7 @@ import java.util.UUID;
 /**
  * Forwards tracking tag changes to the master from runtimes without their own canonical storage.
  */
+@FunctionalInterface
 public interface RemoteTagWriter {
 
     /**

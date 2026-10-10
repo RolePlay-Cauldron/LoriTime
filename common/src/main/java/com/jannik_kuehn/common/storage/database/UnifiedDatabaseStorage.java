@@ -76,7 +76,6 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
      */
     private static final TimeRange ALL_TIME = TimeRange.between(Instant.EPOCH, Instant.parse("9999-01-01T00:00:00Z"));
 
-
     /**
      * Actor label used when a legacy method does not provide explicit actor metadata.
      */

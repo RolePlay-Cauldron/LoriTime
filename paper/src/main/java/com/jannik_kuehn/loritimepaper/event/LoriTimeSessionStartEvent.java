@@ -1,13 +1,15 @@
 package com.jannik_kuehn.loritimepaper.event;
 
-import java.time.Instant;
-import java.util.UUID;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
+
+import java.time.Instant;
+import java.util.UUID;
 
 /**
  * A player started being tracked by LoriTime. Server or world switches do not fire this event.
  */
+@SuppressWarnings("PMD.DataClass")
 public class LoriTimeSessionStartEvent extends LoriTimeEvent {
     /**
      * Handler list of this event.
@@ -36,10 +38,10 @@ public class LoriTimeSessionStartEvent extends LoriTimeEvent {
      * @param name the player name
      * @param server the server name
      * @param world the world name
-     * @param at the moment the event happened
+     * @param occurredAt the moment the event happened
      */
-    public LoriTimeSessionStartEvent(final UUID playerId, final String name, final String server, final String world, final Instant at) {
-        super(playerId, at);
+    public LoriTimeSessionStartEvent(final UUID playerId, final String name, final String server, final String world, final Instant occurredAt) {
+        super(playerId, occurredAt);
         this.name = name;
         this.server = server;
         this.world = world;

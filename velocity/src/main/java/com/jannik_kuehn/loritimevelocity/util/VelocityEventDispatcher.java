@@ -34,29 +34,29 @@ public class VelocityEventDispatcher implements PlatformEventDispatcher {
 
     @Override
     public void sessionStarted(final UUID playerId, final String name, final String server, final String world,
-                               final Instant at) {
-        eventManager.fireAndForget(new LoriTimeSessionStartEvent(playerId, name, server, world, at));
+                               final Instant occurredAt) {
+        eventManager.fireAndForget(new LoriTimeSessionStartEvent(playerId, name, server, world, occurredAt));
     }
 
     @Override
-    public void sessionEnded(final UUID playerId, final Instant at) {
-        eventManager.fireAndForget(new LoriTimeSessionEndEvent(playerId, at));
+    public void sessionEnded(final UUID playerId, final Instant occurredAt) {
+        eventManager.fireAndForget(new LoriTimeSessionEndEvent(playerId, occurredAt));
     }
 
     @Override
-    public void afkChanged(final UUID playerId, final boolean afk, final Instant at) {
-        eventManager.fireAndForget(new LoriTimeAfkStateChangeEvent(playerId, afk, at));
+    public void afkChanged(final UUID playerId, final boolean afk, final Instant occurredAt) {
+        eventManager.fireAndForget(new LoriTimeAfkStateChangeEvent(playerId, afk, occurredAt));
     }
 
     @Override
     public void timeAdjusted(final UUID playerId, final Duration amount, final TimeScope scope, final String reason,
-                             final String actorName, final Instant at) {
-        eventManager.fireAndForget(new LoriTimeTimeAdjustedEvent(playerId, amount, scope, reason, actorName, at));
+                             final String actorName, final Instant occurredAt) {
+        eventManager.fireAndForget(new LoriTimeTimeAdjustedEvent(playerId, amount, scope, reason, actorName, occurredAt));
     }
 
     @Override
     public void trackingTagsChanged(final UUID playerId, final Map<String, String> previousTags,
-                                    final Map<String, String> tags, final Instant at) {
-        eventManager.fireAndForget(new LoriTimeTrackingTagChangeEvent(playerId, previousTags, tags, at));
+                                    final Map<String, String> tags, final Instant occurredAt) {
+        eventManager.fireAndForget(new LoriTimeTrackingTagChangeEvent(playerId, previousTags, tags, occurredAt));
     }
 }

@@ -1,16 +1,17 @@
 package com.jannik_kuehn.loritimepaper.event;
 
 import com.jannik_kuehn.common.api.storage.TimeScope;
+import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
-import org.bukkit.event.HandlerList;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * A signed time adjustment was stored for a player, for example by a command, the API or AFK time removal.
  */
+@SuppressWarnings("PMD.DataClass")
 public class LoriTimeTimeAdjustedEvent extends LoriTimeEvent {
     /**
      * Handler list of this event.
@@ -45,10 +46,10 @@ public class LoriTimeTimeAdjustedEvent extends LoriTimeEvent {
      * @param scope the adjustment scope
      * @param reason the machine-readable adjustment reason
      * @param actorName the actor display name
-     * @param at the moment the event happened
+     * @param occurredAt the moment the event happened
      */
-    public LoriTimeTimeAdjustedEvent(final UUID playerId, final Duration amount, final TimeScope scope, final String reason, final String actorName, final Instant at) {
-        super(playerId, at);
+    public LoriTimeTimeAdjustedEvent(final UUID playerId, final Duration amount, final TimeScope scope, final String reason, final String actorName, final Instant occurredAt) {
+        super(playerId, occurredAt);
         this.amount = amount;
         this.scope = scope;
         this.reason = reason;

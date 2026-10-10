@@ -1,9 +1,10 @@
 package com.jannik_kuehn.loritimepaper.event;
 
-import java.time.Instant;
-import java.util.UUID;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
+
+import java.time.Instant;
+import java.util.UUID;
 
 /**
  * LoriTime stopped tracking a player, because they left or counting stopped, for example while AFK.
@@ -18,10 +19,10 @@ public class LoriTimeSessionEndEvent extends LoriTimeEvent {
      * Creates the event.
      *
      * @param playerId the player UUID
-     * @param at the moment the event happened
+     * @param occurredAt the moment the event happened
      */
-    public LoriTimeSessionEndEvent(final UUID playerId, final Instant at) {
-        super(playerId, at);
+    public LoriTimeSessionEndEvent(final UUID playerId, final Instant occurredAt) {
+        super(playerId, occurredAt);
     }
 
     /**

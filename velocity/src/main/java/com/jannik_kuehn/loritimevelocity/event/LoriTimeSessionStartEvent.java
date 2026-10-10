@@ -10,7 +10,7 @@ import java.util.UUID;
  * @param name     the player name
  * @param server   the server name
  * @param world    the world name
- * @param at       when the session started
+ * @param occurredAt       when the session started
  */
-public record LoriTimeSessionStartEvent(UUID playerId, String name, String server, String world, Instant at) {
+public record LoriTimeSessionStartEvent(UUID playerId, String name, String server, String world, Instant occurredAt) {
 }

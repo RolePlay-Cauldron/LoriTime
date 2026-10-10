@@ -48,6 +48,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The {@link LoriTimePlugin} is the main class of the plugin.
@@ -138,17 +140,18 @@ public class LoriTimePlugin {
     /**
      * Read-only time source for runtimes without canonical storage (slave mode).
      */
-    private volatile RemoteTimeReader remoteTimeReader;
+    private final AtomicReference<RemoteTimeReader> remoteTimeReader = new AtomicReference<>();
 
     /**
      * Forwards tracking tag changes to the master, only present on slave runtimes.
      */
-    private volatile RemoteTagWriter remoteTagWriter;
+    private final AtomicReference<RemoteTagWriter> remoteTagWriter = new AtomicReference<>();
 
     /**
      * Bridge to the native event system of the running platform.
      */
-    private volatile PlatformEventDispatcher eventDispatcher = PlatformEventDispatcher.NOOP;
+    private final AtomicReference<PlatformEventDispatcher> eventDispatcher =
+            new AtomicReference<>(PlatformEventDispatcher.NOOP);
 
     /**
      * Selects the language used for sender-facing messages.
@@ -173,7 +176,7 @@ public class LoriTimePlugin {
     /**
      * {@code true} if an error occurred and the plugin should be
      */
-    private boolean errorDisable;
+    private final AtomicBoolean errorDisable = new AtomicBoolean();
 
     /**
      * Creates a new {@link LoriTimePlugin} instance.
@@ -187,7 +190,7 @@ public class LoriTimePlugin {
         this.dataFolder = dataFolder;
         this.scheduler = scheduler;
         this.server = server;
-        this.errorDisable = false;
+        this.errorDisable.set(false);
 
         this.loggerFactory = loggerFactory;
         this.log = loggerFactory.create(LoriTimePlugin.class, loggerTopic);
@@ -206,7 +209,7 @@ public class LoriTimePlugin {
      */
     public void enable() {
         loadOrCreateConfigs();
-        if (errorDisable) {
+        if (errorDisable.get()) {
             log.error("Disabling the plugin because of an issue.");
             disable();
             return;
@@ -229,11 +232,11 @@ public class LoriTimePlugin {
             dataStorageManager.loadStorages();
         } catch (final StorageException e) {
             log.error("An error occurred while enabling the storage", e);
-            errorDisable = true;
+            errorDisable.set(true);
             return;
         }
 
-        if (errorDisable) {
+        if (errorDisable.get()) {
             log.error("Disabling the plugin because of an issue.");
             disable();
             return;
@@ -387,7 +390,7 @@ public class LoriTimePlugin {
             fileManager.getOrCreateLanguageFile(configuredLanguage);
         } catch (final ConfigurationException ex) {
             log.error("An error occurred while loading the configured language file.", ex);
-            errorDisable = true;
+            errorDisable.set(true);
         }
         languageSelector = new ConfiguredDefaultLanguageSelector(configuredLanguage);
         localization.reload(configuredLanguage);
@@ -455,7 +458,7 @@ public class LoriTimePlugin {
             fileManager.startBackup();
         } catch (final ConfigurationException e) {
             log.error("An error occurred while loading the config file.", e);
-            errorDisable = true;
+            errorDisable.set(true);
             return;
         }
 
@@ -465,7 +468,7 @@ public class LoriTimePlugin {
 
         if (!config.isLoaded() || localization.healthState() == Localization.HealthState.FAILED) {
             log.error("The plugins localization and config didn't load correctly. Pls delete the files and try again! Stop starting plugin..");
-            errorDisable = true;
+            errorDisable.set(true);
             return;
         }
         rebuildTimeParser();
@@ -567,7 +570,7 @@ public class LoriTimePlugin {
      * @param remoteTimeReader the {@link RemoteTimeReader}, or {@code null} to unregister.
      */
     public void setRemoteTimeReader(final RemoteTimeReader remoteTimeReader) {
-        this.remoteTimeReader = remoteTimeReader;
+        this.remoteTimeReader.set(remoteTimeReader);
     }
 
     /**
@@ -576,7 +579,7 @@ public class LoriTimePlugin {
      * @param remoteTagWriter the {@link RemoteTagWriter}, or {@code null} to unregister.
      */
     public void setRemoteTagWriter(final RemoteTagWriter remoteTagWriter) {
-        this.remoteTagWriter = remoteTagWriter;
+        this.remoteTagWriter.set(remoteTagWriter);
     }
 
     /**
@@ -585,7 +588,7 @@ public class LoriTimePlugin {
      * @return the registered {@link RemoteTagWriter}, if any.
      */
     public Optional<RemoteTagWriter> getRemoteTagWriter() {
-        return Optional.ofNullable(remoteTagWriter);
+        return Optional.ofNullable(remoteTagWriter.get());
     }
 
     /**
@@ -594,7 +597,7 @@ public class LoriTimePlugin {
      * @return the registered {@link RemoteTimeReader}, if any.
      */
     public Optional<RemoteTimeReader> getRemoteTimeReader() {
-        return Optional.ofNullable(remoteTimeReader);
+        return Optional.ofNullable(remoteTimeReader.get());
     }
 
     /**
@@ -603,7 +606,7 @@ public class LoriTimePlugin {
      * @param eventDispatcher the dispatcher, or {@code null} to disable event dispatching.
      */
     public void setEventDispatcher(final PlatformEventDispatcher eventDispatcher) {
-        this.eventDispatcher = eventDispatcher == null ? PlatformEventDispatcher.NOOP : eventDispatcher;
+        this.eventDispatcher.set(eventDispatcher == null ? PlatformEventDispatcher.NOOP : eventDispatcher);
     }
 
     /**
@@ -612,7 +615,7 @@ public class LoriTimePlugin {
      * @return the registered dispatcher, never {@code null}.
      */
     public PlatformEventDispatcher getEventDispatcher() {
-        return eventDispatcher;
+        return eventDispatcher.get();
     }
 
     /**

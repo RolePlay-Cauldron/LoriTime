@@ -1,9 +1,10 @@
 package com.jannik_kuehn.loritimepaper.event;
 
-import java.time.Instant;
-import java.util.UUID;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
+
+import java.time.Instant;
+import java.util.UUID;
 
 /**
  * A player entered or left the AFK state.
@@ -24,10 +25,10 @@ public class LoriTimeAfkStateChangeEvent extends LoriTimeEvent {
      *
      * @param playerId the player UUID
      * @param afk true when the player became AFK, false when they resumed
-     * @param at the moment the event happened
+     * @param occurredAt the moment the event happened
      */
-    public LoriTimeAfkStateChangeEvent(final UUID playerId, final boolean afk, final Instant at) {
-        super(playerId, at);
+    public LoriTimeAfkStateChangeEvent(final UUID playerId, final boolean afk, final Instant occurredAt) {
+        super(playerId, occurredAt);
         this.afk = afk;
     }
 

@@ -1,10 +1,11 @@
 package com.jannik_kuehn.loritimepaper.event;
 
+import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import org.bukkit.event.HandlerList;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * The tracking tags of a player changed.
@@ -31,11 +32,11 @@ public class LoriTimeTrackingTagChangeEvent extends LoriTimeEvent {
      * @param playerId     the player UUID
      * @param previousTags the tags before the change
      * @param tags         the tags after the change
-     * @param at           the moment the event happened
+     * @param occurredAt           the moment the event happened
      */
     public LoriTimeTrackingTagChangeEvent(final UUID playerId, final Map<String, String> previousTags,
-                                          final Map<String, String> tags, final Instant at) {
-        super(playerId, at);
+                                          final Map<String, String> tags, final Instant occurredAt) {
+        super(playerId, occurredAt);
         this.previousTags = Map.copyOf(previousTags);
         this.tags = Map.copyOf(tags);
     }

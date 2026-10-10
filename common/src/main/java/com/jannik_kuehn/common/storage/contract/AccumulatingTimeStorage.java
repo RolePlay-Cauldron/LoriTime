@@ -35,8 +35,13 @@ import java.util.function.Supplier;
 /**
  * Unified storage decorator that keeps active sessions in memory while persisting session rows.
  */
-@SuppressWarnings({"PMD.TooManyMethods", "PMD.CouplingBetweenObjects"})
+@SuppressWarnings({"PMD.TooManyMethods", "PMD.CouplingBetweenObjects", "PMD.CyclomaticComplexity"})
 public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator, StatisticsStorage {
+    /**
+     * Parameter name used for scope validation.
+     */
+    private static final String SCOPE_PARAMETER = "scope";
+
     /**
      * Number of bounded per-player lock stripes.
      */
@@ -148,7 +153,7 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
 
     @Override
     public OptionalLong getTime(final UUID uniqueId, final TimeScope scope) throws StorageException {
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);
         final PlayerSessionContext context = activeSession == null ? null : activeSession.context();
         if (context != null && scope.matches(context)) {
@@ -162,7 +167,7 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
 
     @Override
     public OptionalLong getTime(final UUID uniqueId, final TimeScope scope, final TimeRange range) throws StorageException {
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         Objects.requireNonNull(range, "range");
         final OptionalLong storedTime = storage.getTime(uniqueId, scope, range);
         final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);
@@ -179,7 +184,7 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
     @Override
     public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final String tagKey,
                                       final String tagValue) throws StorageException {
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         final OptionalLong storedTime = storage.getTaggedTime(uniqueId, scope, tagKey, tagValue);
         final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);
         final PlayerSessionContext context = activeSession == null ? null : activeSession.context();
@@ -194,7 +199,7 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
     @Override
     public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final TimeRange range,
                                       final String tagKey, final String tagValue) throws StorageException {
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         Objects.requireNonNull(range, "range");
         final OptionalLong storedTime = storage.getTaggedTime(uniqueId, scope, range, tagKey, tagValue);
         final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);

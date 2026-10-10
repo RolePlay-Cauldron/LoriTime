@@ -26,10 +26,10 @@ public interface PlatformEventDispatcher {
      * @param name     the player name
      * @param server   the server name
      * @param world    the world name
-     * @param at       when the session started
+     * @param occurredAt when the session started
      */
     default void sessionStarted(final UUID playerId, final String name, final String server, final String world,
-                                final Instant at) {
+                                final Instant occurredAt) {
         // ignored by default
     }
 
@@ -37,9 +37,9 @@ public interface PlatformEventDispatcher {
      * A player stopped being tracked.
      *
      * @param playerId the player UUID
-     * @param at       when tracking stopped
+     * @param occurredAt when tracking stopped
      */
-    default void sessionEnded(final UUID playerId, final Instant at) {
+    default void sessionEnded(final UUID playerId, final Instant occurredAt) {
         // ignored by default
     }
 
@@ -48,9 +48,9 @@ public interface PlatformEventDispatcher {
      *
      * @param playerId the player UUID
      * @param afk      {@code true} when the player became AFK
-     * @param at       when the state changed
+     * @param occurredAt when the state changed
      */
-    default void afkChanged(final UUID playerId, final boolean afk, final Instant at) {
+    default void afkChanged(final UUID playerId, final boolean afk, final Instant occurredAt) {
         // ignored by default
     }
 
@@ -62,10 +62,10 @@ public interface PlatformEventDispatcher {
      * @param scope     the adjustment scope
      * @param reason    the machine-readable reason
      * @param actorName the actor display name
-     * @param at        when the adjustment was stored
+     * @param occurredAt when the adjustment was stored
      */
     default void timeAdjusted(final UUID playerId, final Duration amount, final TimeScope scope, final String reason,
-                              final String actorName, final Instant at) {
+                              final String actorName, final Instant occurredAt) {
         // ignored by default
     }
 
@@ -75,10 +75,10 @@ public interface PlatformEventDispatcher {
      * @param playerId     the player UUID
      * @param previousTags the tags before the change
      * @param tags         the tags after the change
-     * @param at           when the tags changed
+     * @param occurredAt   when the tags changed
      */
     default void trackingTagsChanged(final UUID playerId, final Map<String, String> previousTags,
-                                     final Map<String, String> tags, final Instant at) {
+                                     final Map<String, String> tags, final Instant occurredAt) {
         // ignored by default
     }
 }

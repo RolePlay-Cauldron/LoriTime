@@ -41,6 +41,16 @@ public final class TimeTable {
     private static final String SERVER_SUFFIX = "_server";
 
     /**
+     * Initial capacity of dynamically built tag queries.
+     */
+    private static final int SQL_BUFFER_SIZE = 384;
+
+    /**
+     * Shared SQL select list for ranged queries.
+     */
+    private static final String SELECT_RANGE_COLUMNS = "SELECT t.`join_time`, t.`leave_time` ";
+
+    /**
      * SQL alias for the session join timestamp.
      */
     private static final String JOIN_TIME = "t.join_time";
@@ -247,7 +257,7 @@ public final class TimeTable {
                                             final String world, final String tagKey, final String tagValue,
                                             final TimeRange range)
             throws SQLException {
-        final StringBuilder sql = new StringBuilder("SELECT t.`join_time`, t.`leave_time` ")
+        final StringBuilder sql = new StringBuilder(SQL_BUFFER_SIZE).append(SELECT_RANGE_COLUMNS)
                 .append(FROM_TIME).append(tableName).append(TIME_TABLE_ALIAS)
                 .append(JOIN_TABLE).append(playerTable).append(PLAYER_JOIN)
                 .append(JOIN_TABLE).append(tagTableName()).append("` g ON g.time_id = t.id ");
@@ -361,7 +371,7 @@ public final class TimeTable {
      */
     public OptionalLong sumForPlayer(final Connection connection, final UUID uuid, final TimeRange range)
             throws SQLException {
-        final String sql = "SELECT t.`join_time`, t.`leave_time` "
+        final String sql = SELECT_RANGE_COLUMNS
                 + FROM_TIME + tableName + TIME_TABLE_ALIAS
                 + JOIN_TABLE + playerTable + PLAYER_JOIN
                 + "WHERE p.uuid = ?";
@@ -408,7 +418,7 @@ public final class TimeTable {
      */
     public OptionalLong sumForPlayerAndServer(final Connection connection, final UUID uuid,
                                               final String server, final TimeRange range) throws SQLException {
-        final String sql = "SELECT t.`join_time`, t.`leave_time` "
+        final String sql = SELECT_RANGE_COLUMNS
                 + FROM_TIME + tableName + TIME_TABLE_ALIAS
                 + JOIN_TABLE + playerTable + PLAYER_JOIN
                 + JOIN_TABLE + worldTableName() + WORLD_TIME_JOIN
@@ -462,7 +472,7 @@ public final class TimeTable {
     public OptionalLong sumForPlayerAndWorld(final Connection connection, final UUID uuid,
                                              final String server, final String world,
                                              final TimeRange range) throws SQLException {
-        final String sql = "SELECT t.`join_time`, t.`leave_time` "
+        final String sql = SELECT_RANGE_COLUMNS
                 + FROM_TIME + tableName + TIME_TABLE_ALIAS
                 + JOIN_TABLE + playerTable + PLAYER_JOIN
                 + JOIN_TABLE + worldTableName() + WORLD_TIME_JOIN

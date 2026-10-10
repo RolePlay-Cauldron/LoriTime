@@ -12,6 +12,7 @@ import java.util.UUID;
 /**
  * Tracks active player sessions and persists their elapsed online time.
  */
+@SuppressWarnings("PMD.TooManyMethods")
 public interface TimeAccumulator extends AutoCloseable {
 
     /**

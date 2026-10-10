@@ -197,10 +197,10 @@ class UnifiedDatabaseStorageTest {
                     TimeEntryReason.PLAYER_JOIN);
             storage.updateSession(tagged, 20_000L, TimeEntryReason.PLAYER_LEAVE);
 
-            final TimeRange half = TimeRange.between(java.time.Instant.ofEpochMilli(15_000L),
-                    java.time.Instant.ofEpochMilli(30_000L));
-            final TimeRange outside = TimeRange.between(java.time.Instant.ofEpochMilli(30_000L),
-                    java.time.Instant.ofEpochMilli(40_000L));
+            final TimeRange half = TimeRange.between(Instant.ofEpochMilli(15_000L),
+                    Instant.ofEpochMilli(30_000L));
+            final TimeRange outside = TimeRange.between(Instant.ofEpochMilli(30_000L),
+                    Instant.ofEpochMilli(40_000L));
 
             assertEquals(OptionalLong.of(5L),
                     storage.getTaggedTime(PLAYER, TimeScope.GLOBAL, half, "rp:character", "Aria"),

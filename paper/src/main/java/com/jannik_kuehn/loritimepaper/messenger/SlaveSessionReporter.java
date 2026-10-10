@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Reports slave-observed world context to the master.
  */
+@SuppressWarnings("PMD.TooManyMethods")
 public class SlaveSessionReporter extends PluginMessaging implements Listener, AutoCloseable, RemoteTagWriter {
 
     /**

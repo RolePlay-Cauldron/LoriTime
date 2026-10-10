@@ -34,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ResourceLock("LoriTimeAPI")
-@SuppressWarnings({"PMD.TooManyMethods", "PMD.AvoidAccessibilityAlteration"})
+@SuppressWarnings({"PMD.TooManyMethods", "PMD.AvoidAccessibilityAlteration",
+        "PMD.UnitTestContainsTooManyAsserts"})
 class LoriTimeServiceTest {
 
     private static final UUID PLAYER_ID = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
