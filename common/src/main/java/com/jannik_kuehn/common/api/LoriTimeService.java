@@ -168,4 +168,29 @@ public interface LoriTimeService {
      * @return future completed when the adjustment has been stored
      */
     CompletableFuture<Void> addTime(LoriTimePlayer player, Duration amount, LoriTimePlayer actor, TimeScope scope);
+
+    /**
+     * Tells whether this runtime owns canonical storage and therefore supports every API call.
+     * Slave servers only support {@link #getOnlineTime(UUID)} for players currently online on them;
+     * all other calls complete exceptionally with a {@link LoriTimeApiException}.
+     *
+     * @return {@code true} if all API calls are supported on this runtime
+     * @since 2.3.0
+     */
+    default boolean isFullAccess() {
+        return true;
+    }
+
+    /**
+     * Formats a duration the same way LoriTime does in its own messages and placeholders,
+     * using the configured language units. Non-positive durations produce an empty string.
+     *
+     * @param duration duration to format, precise to whole seconds
+     * @return the localized, human-readable duration
+     * @throws UnsupportedOperationException if the implementation does not support formatting
+     * @since 2.3.0
+     */
+    default String formatDuration(final Duration duration) {
+        throw new UnsupportedOperationException("formatDuration is not supported by this LoriTimeService");
+    }
 }

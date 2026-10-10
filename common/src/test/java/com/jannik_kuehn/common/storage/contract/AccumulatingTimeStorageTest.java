@@ -4,6 +4,7 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.platform.PlatformEventDispatcher;
 import com.jannik_kuehn.common.storage.model.AfkPeriod;
 import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
@@ -382,6 +383,33 @@ class AccumulatingTimeStorageTest {
         });
         thread.start();
         return thread;
+    }
+
+    @Test
+    void notifiesDispatcherAboutSessionStartAndEnd() throws StorageException {
+        final PlatformEventDispatcher dispatcher = mock(PlatformEventDispatcher.class);
+        final AccumulatingTimeStorage accumulator = new AccumulatingTimeStorage(mock(WrappedLogger.class),
+                new FakeUnifiedStorage(), () -> dispatcher);
+
+        accumulator.startAccumulating(PLAYER, "Lorias", "survival", "world", 1_000L);
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 5_000L, TimeEntryReason.PLAYER_LEAVE);
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 6_000L, TimeEntryReason.PLAYER_LEAVE);
+
+        verify(dispatcher).sessionStarted(PLAYER, "Lorias", "survival", "world", Instant.ofEpochMilli(1_000L));
+        verify(dispatcher, times(1)).sessionEnded(PLAYER, Instant.ofEpochMilli(5_000L));
+        verifyNoMoreInteractions(dispatcher);
+    }
+
+    @Test
+    void notifiesDispatcherAboutAdjustments() throws StorageException {
+        final PlatformEventDispatcher dispatcher = mock(PlatformEventDispatcher.class);
+        final AccumulatingTimeStorage accumulator = new AccumulatingTimeStorage(mock(WrappedLogger.class),
+                new FakeUnifiedStorage(), () -> dispatcher);
+
+        accumulator.addTime(new ManualTimeAdjustment(PLAYER, 30L, TimeEntryReason.MANUAL_ADJUSTMENT, "Admin"));
+
+        verify(dispatcher).timeAdjusted(eq(PLAYER), eq(Duration.ofSeconds(30)), eq(TimeScope.GLOBAL),
+                eq("MANUAL_ADJUSTMENT"), eq("Admin"), any(Instant.class));
     }
 
     private AccumulatingTimeStorage accumulator(final FakeUnifiedStorage storage) {

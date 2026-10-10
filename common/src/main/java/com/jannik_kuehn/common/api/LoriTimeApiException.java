@@ -11,6 +11,15 @@ public class LoriTimeApiException extends RuntimeException {
     private static final long serialVersionUID = 3577064814577484088L;
 
     /**
+     * Creates a new API exception without a cause.
+     *
+     * @param message the exception message.
+     */
+    public LoriTimeApiException(final String message) {
+        super(message);
+    }
+
+    /**
      * Creates a new API exception.
      *
      * @param message the exception message.

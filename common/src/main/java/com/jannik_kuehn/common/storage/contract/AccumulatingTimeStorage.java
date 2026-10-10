@@ -4,6 +4,7 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.platform.PlatformEventDispatcher;
 import com.jannik_kuehn.common.storage.model.AfkPeriod;
 import com.jannik_kuehn.common.storage.model.AfkPeriodEndReason;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
@@ -15,6 +16,7 @@ import com.jannik_kuehn.common.storage.model.StatisticsRequest;
 import com.jannik_kuehn.common.storage.model.StatisticsSnapshot;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +27,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * Unified storage decorator that keeps active sessions in memory while persisting session rows.
@@ -48,6 +52,11 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
     private final UnifiedStorage storage;
 
     /**
+     * Supplies the platform event dispatcher.
+     */
+    private final Supplier<PlatformEventDispatcher> eventDispatcher;
+
+    /**
      * Active persisted sessions keyed by player UUID.
      */
     private final ConcurrentMap<UUID, PersistedPlayerSession> onlineSessions = new ConcurrentHashMap<>();
@@ -64,8 +73,21 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
      * @param timeStorage the backing storage.
      */
     public AccumulatingTimeStorage(final WrappedLogger log, final UnifiedStorage timeStorage) {
+        this(log, timeStorage, () -> PlatformEventDispatcher.NOOP);
+    }
+
+    /**
+     * Creates an accumulating storage that reports session and adjustment changes to the platform.
+     *
+     * @param log             the logger.
+     * @param timeStorage     the backing storage.
+     * @param eventDispatcher supplier of the current platform event dispatcher.
+     */
+    public AccumulatingTimeStorage(final WrappedLogger log, final UnifiedStorage timeStorage,
+                                   final Supplier<PlatformEventDispatcher> eventDispatcher) {
         this.log = log;
         this.storage = Objects.requireNonNull(timeStorage);
+        this.eventDispatcher = Objects.requireNonNull(eventDispatcher);
     }
 
     @Override
@@ -156,6 +178,8 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
     @Override
     public void addTime(final ManualTimeAdjustment adjustment) throws StorageException {
         storage.addTime(adjustment);
+        eventDispatcher.get().timeAdjusted(adjustment.playerUuid(), Duration.ofSeconds(adjustment.amountSeconds()),
+                adjustment.scope(), adjustment.reason().name(), adjustment.actorName(), Instant.now());
     }
 
     @Override
@@ -255,18 +279,24 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
                 storage.updateSession(previous.sessionId(), when, switchReason(previous.context(), context));
             }
         });
+        eventDispatcher.get().sessionStarted(uuid, name, server, world, Instant.ofEpochMilli(when));
     }
 
     @Override
     public void stopAccumulatingAndSaveOnlineTime(final UUID uuid, final long when,
                                                   final TimeEntryReason reason)
             throws StorageException {
+        final AtomicBoolean ended = new AtomicBoolean();
         withSessionLock(uuid, () -> {
             final PersistedPlayerSession session = onlineSessions.remove(uuid);
             if (session != null) {
                 storage.updateSession(session.sessionId(), when, reason);
+                ended.set(true);
             }
         });
+        if (ended.get()) {
+            eventDispatcher.get().sessionEnded(uuid, Instant.ofEpochMilli(when));
+        }
     }
 
     @Override

@@ -6,11 +6,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
+- Added `LoriTimeService#formatDuration(Duration)` to the public API, returning LoriTime's localized time format
+- Added `LoriTimeService#isFullAccess()` to the public API so integrations can detect slave servers with limited API access
+- Added native Paper events `LoriTimeSessionStartEvent`, `LoriTimeSessionEndEvent`, `LoriTimeAfkStateChangeEvent` and `LoriTimeTimeAdjustedEvent` (package `com.jannik_kuehn.loritimepaper.event`)
+- Added the same events as Velocity events (package `com.jannik_kuehn.loritimevelocity.event`)
+- Events are fired on standalone and master installations; they are asynchronous on Paper when fired off the main thread
 ### Changed
 - Updated several dependencies
+- Public API on slave servers now answers `getOnlineTime(UUID)` for online players from the slave read cache; all other calls fail with a `LoriTimeApiException`
 ### Deprecated
 ### Removed
 ### Fixed
+- Fixed public API futures never completing on slave servers or after unexpected runtime errors
 ### Security
 
 ## [2.2.0] - 2026-08-05

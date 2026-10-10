@@ -3,10 +3,12 @@ package com.jannik_kuehn.common.api;
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
+import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
 import com.jannik_kuehn.common.scheduler.PluginTask;
 import com.jannik_kuehn.common.service.LoriTimeServiceImpl;
+import com.jannik_kuehn.common.service.RemoteTimeReader;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
@@ -226,6 +228,75 @@ class LoriTimeServiceTest {
                 "Storage failures should be wrapped in the public API exception");
         assertInstanceOf(LoriTimeApiException.class, thrown.getCause(),
                 "Storage failures should be wrapped in the public API exception");
+    }
+
+    @Test
+    void completesExceptionallyWhenStorageThrowsRuntimeException() throws StorageException {
+        when(storage.getName(PLAYER_ID)).thenThrow(new IllegalStateException("boom"));
+
+        final CompletionException thrown = assertThrows(CompletionException.class, () -> service.findName(PLAYER_ID).join(),
+                "Runtime failures must complete the future instead of leaving it pending");
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(),
+                "Runtime failures should be wrapped in the public API exception");
+    }
+
+    @Test
+    void slaveRuntimeReadsCachedGlobalTime() {
+        when(plugin.getStorage()).thenReturn(null);
+        final RemoteTimeReader reader = mock(RemoteTimeReader.class);
+        when(reader.getCachedTime(PLAYER_ID)).thenReturn(OptionalLong.of(90));
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.of(reader));
+
+        assertEquals(Optional.of(Duration.ofSeconds(90)), service.getOnlineTime(PLAYER_ID).join(),
+                "Slave runtime should answer from the remote time reader");
+        assertFalse(service.isFullAccess(), "Slave runtime has no full API access");
+    }
+
+    @Test
+    void slaveRuntimeRequestsRefreshForUnknownPlayer() {
+        when(plugin.getStorage()).thenReturn(null);
+        final RemoteTimeReader reader = mock(RemoteTimeReader.class);
+        when(reader.getCachedTime(PLAYER_ID)).thenReturn(OptionalLong.empty());
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.of(reader));
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.getOnlineTime(PLAYER_ID).join(), "Unknown slave player should fail fast");
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+        verify(reader).requestRefresh(PLAYER_ID);
+    }
+
+    @Test
+    void slaveRuntimeRejectsUnsupportedCalls() {
+        when(plugin.getStorage()).thenReturn(null);
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.empty());
+        final TimeScope scope = TimeScope.server("survival");
+
+        assertAll(
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.getOnlineTime(PLAYER_ID).join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.getOnlineTime(PLAYER_ID, scope).join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.findUuid("Lorias_").join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.addTime(PLAYER_ID, Duration.ofSeconds(1)).join()).getCause())
+        );
+    }
+
+    @Test
+    void formatsDurationWithConfiguredLocalization() {
+        final Localization localization = mock(Localization.class);
+        when(localization.getRawMessage("unit.hour.singular")).thenReturn("h");
+        when(localization.getRawMessage("unit.minute.plural")).thenReturn("min");
+        when(plugin.getLocalization()).thenReturn(localization);
+
+        assertEquals("1 h 2 min", service.formatDuration(Duration.ofSeconds(3720)),
+                "Expected facade to format with the configured units");
+    }
+
+    @Test
+    void fullAccessIsAvailableWithStorage() {
+        assertTrue(service.isFullAccess(), "Canonical runtime should report full access");
     }
 
     private void resetApi() throws ReflectiveOperationException {

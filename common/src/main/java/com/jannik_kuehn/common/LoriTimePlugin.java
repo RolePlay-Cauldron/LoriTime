@@ -23,8 +23,10 @@ import com.jannik_kuehn.common.module.updater.download.sources.ModrinthReleaseSo
 import com.jannik_kuehn.common.module.updater.download.sources.ReleaseUpdateSource;
 import com.jannik_kuehn.common.module.updater.version.Version;
 import com.jannik_kuehn.common.platform.CommonServer;
+import com.jannik_kuehn.common.platform.PlatformEventDispatcher;
 import com.jannik_kuehn.common.player.LoriTimePlayerConverter;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
+import com.jannik_kuehn.common.service.RemoteTimeReader;
 import com.jannik_kuehn.common.storage.DataStorageManager;
 import com.jannik_kuehn.common.storage.StorageMigrationService;
 import com.jannik_kuehn.common.storage.contract.AdminStorageMaintenance;
@@ -131,6 +133,16 @@ public class LoriTimePlugin {
      * The {@link Localization} instance.
      */
     private Localization localization;
+
+    /**
+     * Read-only time source for runtimes without canonical storage (slave mode).
+     */
+    private volatile RemoteTimeReader remoteTimeReader;
+
+    /**
+     * Bridge to the native event system of the running platform.
+     */
+    private volatile PlatformEventDispatcher eventDispatcher = PlatformEventDispatcher.NOOP;
 
     /**
      * Selects the language used for sender-facing messages.
@@ -541,6 +553,42 @@ public class LoriTimePlugin {
      */
     public Localization getLocalization() {
         return localization;
+    }
+
+    /**
+     * Registers the read-only time source used by the public API when no canonical storage is available.
+     *
+     * @param remoteTimeReader the {@link RemoteTimeReader}, or {@code null} to unregister.
+     */
+    public void setRemoteTimeReader(final RemoteTimeReader remoteTimeReader) {
+        this.remoteTimeReader = remoteTimeReader;
+    }
+
+    /**
+     * Getter of the {@link RemoteTimeReader}.
+     *
+     * @return the registered {@link RemoteTimeReader}, if any.
+     */
+    public Optional<RemoteTimeReader> getRemoteTimeReader() {
+        return Optional.ofNullable(remoteTimeReader);
+    }
+
+    /**
+     * Registers the bridge to the platform's native event system.
+     *
+     * @param eventDispatcher the dispatcher, or {@code null} to disable event dispatching.
+     */
+    public void setEventDispatcher(final PlatformEventDispatcher eventDispatcher) {
+        this.eventDispatcher = eventDispatcher == null ? PlatformEventDispatcher.NOOP : eventDispatcher;
+    }
+
+    /**
+     * Getter of the {@link PlatformEventDispatcher}.
+     *
+     * @return the registered dispatcher, never {@code null}.
+     */
+    public PlatformEventDispatcher getEventDispatcher() {
+        return eventDispatcher;
     }
 
     /**

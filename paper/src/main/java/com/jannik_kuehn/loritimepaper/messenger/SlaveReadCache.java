@@ -4,6 +4,7 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.module.messaging.PluginMessaging;
 import com.jannik_kuehn.common.module.messaging.StorageMessageProtocol;
 import com.jannik_kuehn.common.module.messaging.StorageMessageType;
+import com.jannik_kuehn.common.service.RemoteTimeReader;
 import com.jannik_kuehn.common.utils.UuidUtil;
 import com.jannik_kuehn.loritimepaper.LoriTimePaper;
 import com.jannik_kuehn.loritimepaper.placeholder.PlaceholderTimeCache;
@@ -27,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Read cache for slave instances.
  */
-public class SlaveReadCache extends PluginMessaging implements PluginMessageListener, Listener, PlaceholderTimeCache {
+public class SlaveReadCache extends PluginMessaging implements PluginMessageListener, Listener, PlaceholderTimeCache, RemoteTimeReader {
     /**
      * The {@link PaperPluginMessenger} instance.
      */
