@@ -7,8 +7,10 @@ import com.jannik_kuehn.common.api.LoriTimeService;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
+import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -20,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Default public facade implementation.
  */
-@SuppressWarnings("PMD.TooManyMethods")
+@SuppressWarnings({"PMD.TooManyMethods", "PMD.GodClass"})
 public final class LoriTimeServiceImpl implements LoriTimeService {
     /**
      * Parameter name used for player identity validation.
@@ -28,12 +30,17 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     private static final String PLAYER_PARAMETER = "player";
 
     /**
+     * Parameter name used for scope validation.
+     */
+    private static final String SCOPE_PARAMETER = "scope";
+
+    /**
      * Parameter name used for UUID validation.
      */
     private static final String UNIQUE_ID_PARAMETER = "uniqueId";
 
     /**
-     * Actor name used for API adjustments without an explicit actor.
+     * The backing LoriTime plugin.
      */
     private final LoriTimePlugin plugin;
 
@@ -56,7 +63,7 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     public CompletableFuture<Optional<UUID>> findUuid(final String playerName) {
         Objects.requireNonNull(playerName, "playerName");
         return supplyAsync("Could not look up UUID for player name " + playerName,
-                () -> plugin.getStorage().getUuid(playerName));
+                () -> requireStorage("look up UUIDs").getUuid(playerName));
     }
 
     /**
@@ -69,7 +76,7 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     public CompletableFuture<Optional<String>> findName(final UUID uniqueId) {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
         return supplyAsync("Could not look up player name for UUID " + uniqueId,
-                () -> plugin.getStorage().getName(uniqueId));
+                () -> requireStorage("look up player names").getName(uniqueId));
     }
 
     /**
@@ -93,9 +100,12 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     @Override
     public CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope) {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         return supplyAsync("Could not query online time for UUID " + uniqueId, () -> {
-            final OptionalLong seconds = plugin.getStorage().getTime(uniqueId, scope);
+            final UnifiedStorage storage = plugin.getStorage();
+            final OptionalLong seconds = storage == null
+                    ? readRemoteTime(uniqueId, scope)
+                    : storage.getTime(uniqueId, scope);
             return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
         });
     }
@@ -113,10 +123,10 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
                                                                final TimeScope scope,
                                                                final TimeRange range) {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         Objects.requireNonNull(range, "range");
         return supplyAsync("Could not query online time for UUID " + uniqueId, () -> {
-            final OptionalLong seconds = plugin.getStorage().getTime(uniqueId, scope, range);
+            final OptionalLong seconds = requireStorage("query ranged online time").getTime(uniqueId, scope, range);
             return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
         });
     }
@@ -233,13 +243,13 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
                                            final String actorName, final TimeScope scope) {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
         Objects.requireNonNull(actorName, "actorName");
-        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
         if (actorName.isBlank()) {
             throw new IllegalArgumentException("actorName must not be blank");
         }
         final long seconds = seconds(amount);
         return runAsync("Could not add time adjustment for UUID " + uniqueId, () ->
-                plugin.getStorage().addTime(new ManualTimeAdjustment(uniqueId, seconds,
+                requireStorage("add time adjustments").addTime(new ManualTimeAdjustment(uniqueId, seconds,
                         TimeEntryReason.MANUAL_ADJUSTMENT, actorUuid, actorName, scope)));
     }
 
@@ -274,6 +284,149 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
         return addTime(validPlayer.getUniqueId(), amount, validActor.getUniqueId(), validActor.getName(), scope);
     }
 
+    /**
+     * Formats a duration using the configured LoriTime language units.
+     *
+     * @param duration the duration, precise to whole seconds.
+     * @return the localized, human-readable duration.
+     */
+    @Override
+    public String formatDuration(final Duration duration) {
+        return TimeUtil.formatTime(seconds(duration), plugin.getLocalization());
+    }
+
+    /**
+     * Tells whether canonical storage is available on this runtime.
+     *
+     * @return {@code true} if all API calls are supported.
+     */
+    @Override
+    public boolean isFullAccess() {
+        return plugin.getStorage() != null;
+    }
+
+    /**
+     * Attaches or replaces a tracking tag of an online player.
+     *
+     * @param uniqueId the player UUID.
+     * @param key      the namespaced tag key.
+     * @param value    the tag value.
+     * @return future completed when the tag is applied.
+     */
+    @Override
+    public CompletableFuture<Void> setTrackingTag(final UUID uniqueId, final String key, final String value) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        TrackingTagRules.requireValidKey(key);
+        TrackingTagRules.requireValidValue(value);
+        return runAsync("Could not set tracking tag for UUID " + uniqueId, () -> changeTag(uniqueId, key, value));
+    }
+
+    /**
+     * Removes a tracking tag of an online player.
+     *
+     * @param uniqueId the player UUID.
+     * @param key      the namespaced tag key.
+     * @return future completed when the tag is removed.
+     */
+    @Override
+    public CompletableFuture<Void> clearTrackingTag(final UUID uniqueId, final String key) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        TrackingTagRules.requireValidKey(key);
+        return runAsync("Could not clear tracking tag for UUID " + uniqueId, () -> changeTag(uniqueId, key, null));
+    }
+
+    /**
+     * Returns the online time attributed to a tracking tag value.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the requested time scope.
+     * @param tagKey   the namespaced tag key.
+     * @param tagValue the tag value.
+     * @return future for the tagged online time.
+     */
+    @Override
+    public CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                               final String tagKey, final String tagValue) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
+        TrackingTagRules.requireValidKey(tagKey);
+        TrackingTagRules.requireValidValue(tagValue);
+        return supplyAsync("Could not query tagged online time for UUID " + uniqueId, () -> {
+            final OptionalLong seconds = requireStorage("query tagged online time")
+                    .getTaggedTime(uniqueId, scope, tagKey, tagValue);
+            return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
+        });
+    }
+
+    /**
+     * Returns the online time inside a time range attributed to a tracking tag value.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the requested time scope.
+     * @param range    the requested time range.
+     * @param tagKey   the namespaced tag key.
+     * @param tagValue the tag value.
+     * @return future for the tagged online time.
+     */
+    @Override
+    public CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                               final TimeRange range, final String tagKey,
+                                                               final String tagValue) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        Objects.requireNonNull(scope, SCOPE_PARAMETER);
+        Objects.requireNonNull(range, "range");
+        TrackingTagRules.requireValidKey(tagKey);
+        TrackingTagRules.requireValidValue(tagValue);
+        return supplyAsync("Could not query tagged online time for UUID " + uniqueId, () -> {
+            final OptionalLong seconds = requireStorage("query ranged tagged online time")
+                    .getTaggedTime(uniqueId, scope, range, tagKey, tagValue);
+            return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
+        });
+    }
+
+    private void changeTag(final UUID uniqueId, final String key, final String value) throws StorageException {
+        final boolean slave = plugin.getStorage() == null;
+        if (slave && plugin.getRemoteTagWriter().isEmpty()) {
+            throw slaveModeException("change tracking tags");
+        }
+        if (plugin.getServer().getPlayer(uniqueId).isEmpty()) {
+            throw new LoriTimeApiException("Cannot change tracking tags: player " + uniqueId + " is not online");
+        }
+        if (slave) {
+            plugin.getRemoteTagWriter().orElseThrow().changeTag(uniqueId, key, value);
+        } else {
+            plugin.getAccumulator().changeTrackingTag(uniqueId, key, value, System.currentTimeMillis());
+        }
+    }
+
+    private UnifiedStorage requireStorage(final String operation) {
+        final UnifiedStorage storage = plugin.getStorage();
+        if (storage == null) {
+            throw slaveModeException(operation);
+        }
+        return storage;
+    }
+
+    private static LoriTimeApiException slaveModeException(final String operation) {
+        return new LoriTimeApiException("Cannot " + operation
+                + ": this server has no canonical LoriTime storage (slave mode)");
+    }
+
+    private OptionalLong readRemoteTime(final UUID uniqueId, final TimeScope scope) {
+        if (!TimeScope.GLOBAL.equals(scope)) {
+            throw slaveModeException("query scoped online time");
+        }
+        final RemoteTimeReader reader = plugin.getRemoteTimeReader()
+                .orElseThrow(() -> slaveModeException("query online time"));
+        final OptionalLong cached = reader.getCachedTime(uniqueId);
+        if (cached.isEmpty()) {
+            reader.requestRefresh(uniqueId);
+            throw new LoriTimeApiException("Online time of " + uniqueId
+                    + " is not available on this slave server (only online players are supported)");
+        }
+        return cached;
+    }
+
     private CompletableFuture<Void> runAsync(final String failureMessage, final StorageRunnable action) {
         return supplyAsync(failureMessage, () -> {
             action.run();
@@ -281,12 +434,15 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
         });
     }
 
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
     private <T> CompletableFuture<T> supplyAsync(final String failureMessage, final StorageSupplier<T> supplier) {
         final CompletableFuture<T> future = new CompletableFuture<>();
         plugin.getScheduler().runAsyncOnce(() -> {
             try {
                 future.complete(supplier.get());
-            } catch (final StorageException ex) {
+            } catch (final LoriTimeApiException ex) {
+                future.completeExceptionally(ex);
+            } catch (final StorageException | RuntimeException ex) {
                 future.completeExceptionally(new LoriTimeApiException(failureMessage, ex));
             }
         });

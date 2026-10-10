@@ -4,6 +4,7 @@ import com.github.roleplaycauldron.spellbook.core.logger.WrappedLogger;
 import com.jannik_kuehn.common.module.messaging.PluginMessaging;
 import com.jannik_kuehn.common.module.messaging.StorageMessageType;
 import com.jannik_kuehn.common.scheduler.PluginTask;
+import com.jannik_kuehn.common.service.RemoteTagWriter;
 import com.jannik_kuehn.loritimepaper.LoriTimePaper;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -19,7 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Reports slave-observed world context to the master.
  */
-public class SlaveSessionReporter extends PluginMessaging implements Listener, AutoCloseable {
+@SuppressWarnings("PMD.TooManyMethods")
+public class SlaveSessionReporter extends PluginMessaging implements Listener, AutoCloseable, RemoteTagWriter {
 
     /**
      * Messenger used for outgoing plugin messages.
@@ -94,6 +96,13 @@ public class SlaveSessionReporter extends PluginMessaging implements Listener, A
         }
         activeWorlds.put(uuid, next);
         sendWorldSwitch(next);
+    }
+
+    @Override
+    public void changeTag(final UUID uniqueId, final String key, final String value) {
+        log.debug("Reporting remote tracking tag change for player " + uniqueId);
+        sendPluginMessage(SLAVED_TIME_STORAGE, uniqueId, StorageMessageType.TAGS.wireValue(),
+                STORAGE_PROTOCOL_VERSION, System.currentTimeMillis(), key, value == null ? "" : value);
     }
 
     private void reportWorlds() {

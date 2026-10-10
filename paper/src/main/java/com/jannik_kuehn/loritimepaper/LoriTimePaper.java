@@ -20,6 +20,7 @@ import com.jannik_kuehn.loritimepaper.messenger.SlaveReadCache;
 import com.jannik_kuehn.loritimepaper.messenger.SlaveSessionReporter;
 import com.jannik_kuehn.loritimepaper.placeholder.LoriTimePlaceholder;
 import com.jannik_kuehn.loritimepaper.schedule.PaperScheduleAdapter;
+import com.jannik_kuehn.loritimepaper.util.PaperEventDispatcher;
 import com.jannik_kuehn.loritimepaper.util.PaperMetrics;
 import com.jannik_kuehn.loritimepaper.util.PaperServer;
 import org.bstats.bukkit.Metrics;
@@ -86,6 +87,7 @@ public class LoriTimePaper extends JavaPlugin {
     }
 
     private void enableAsCanonical() {
+        loriTimePlugin.setEventDispatcher(new PaperEventDispatcher());
         Bukkit.getPluginManager().registerEvents(new PlayerNamePaperListener(loriTimePlugin), this);
         Bukkit.getPluginManager().registerEvents(new TimeAccumulatorPaperListener(loriTimePlugin), this);
 
@@ -109,6 +111,8 @@ public class LoriTimePaper extends JavaPlugin {
         final SlaveReadCache slaveReadCache = new SlaveReadCache(this, paperPluginMessenger);
         slaveSessionReporter = new SlaveSessionReporter(this, paperPluginMessenger,
                 loriTimePlugin.getConfig().getInt("general.saveInterval"));
+        loriTimePlugin.setRemoteTimeReader(slaveReadCache);
+        loriTimePlugin.setRemoteTagWriter(slaveSessionReporter);
         Bukkit.getPluginManager().registerEvents(slaveReadCache, this);
         Bukkit.getPluginManager().registerEvents(slaveSessionReporter, this);
         Bukkit.getServer().getMessenger().registerIncomingPluginChannel(this, "loritime:storage", slaveReadCache);

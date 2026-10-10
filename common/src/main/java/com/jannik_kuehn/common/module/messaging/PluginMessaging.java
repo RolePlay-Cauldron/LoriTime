@@ -7,6 +7,7 @@ import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.module.afk.AfkTransitionType;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.player.TrackedLoriTimePlayer;
+import com.jannik_kuehn.common.service.TrackingTagRules;
 import com.jannik_kuehn.common.utils.UuidUtil;
 
 import java.io.ByteArrayInputStream;
@@ -224,6 +225,9 @@ public abstract class PluginMessaging {
             case WORLD_SWITCH:
                 switchRemoteWorldContext(playerUUID, input);
                 break;
+            case TAGS:
+                switchRemoteTags(playerUUID, input);
+                break;
             case SEND:
                 warnStorageIgnored(playerUUID, "operation '" + messageType.wireValue() + "' is not accepted by the master");
                 break;
@@ -258,6 +262,25 @@ public abstract class PluginMessaging {
         loriTimePlugin.getAccumulator().switchWorldContext(playerUUID, world, observedAtMs);
         loriTimePlugin.getAccumulator().getActiveSessionContext(playerUUID)
                 .ifPresent(context -> loriTimePlugin.rememberScope(context.server(), world));
+    }
+
+    private void switchRemoteTags(final UUID playerUUID, final DataInputStream input) throws IOException, StorageException {
+        if (!isSupportedStorageVersion(StorageMessageType.TAGS, input.readInt(), playerUUID)) {
+            return;
+        }
+        final long observedAtMs = input.readLong();
+        final String key = input.readUTF();
+        final String value = input.readUTF();
+        final boolean clear = value.isEmpty();
+        if (!TrackingTagRules.isValidKey(key) || !clear && !TrackingTagRules.isValidValue(value)) {
+            warnStorageIgnored(playerUUID, "invalid tracking tag '" + key + "'");
+            return;
+        }
+        if (loriTimePlugin.getServer().getPlayer(playerUUID).isEmpty()) {
+            warnStorageIgnored(playerUUID, "tracking tags for a player that is not online");
+            return;
+        }
+        loriTimePlugin.getAccumulator().changeTrackingTag(playerUUID, key, clear ? null : value, observedAtMs);
     }
 
     private boolean isSupportedStorageVersion(final StorageMessageType messageType, final int protocolVersion, final UUID playerUUID) {

@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Stable public facade for third-party LoriTime integrations.
  */
+@SuppressWarnings("PMD.TooManyMethods")
 public interface LoriTimeService {
     /**
      * Actor name used for API adjustments without an explicit actor.
@@ -168,4 +169,96 @@ public interface LoriTimeService {
      * @return future completed when the adjustment has been stored
      */
     CompletableFuture<Void> addTime(LoriTimePlayer player, Duration amount, LoriTimePlayer actor, TimeScope scope);
+
+    /**
+     * Tells whether this runtime owns canonical storage and therefore supports every API call.
+     * Slave servers only support {@link #getOnlineTime(UUID)} for players currently online on them, and the
+     * first call right after a join may fail until the value was received from the master;
+     * all other calls complete exceptionally with a {@link LoriTimeApiException}.
+     *
+     * @return {@code true} if all API calls are supported on this runtime
+     */
+    default boolean isFullAccess() {
+        return true;
+    }
+
+    /**
+     * Formats a duration the same way LoriTime does in its own messages and placeholders,
+     * using the configured language units. Non-positive durations produce an empty string.
+     *
+     * @param duration duration to format, precise to whole seconds
+     * @return the localized, human-readable duration
+     * @throws UnsupportedOperationException if the implementation does not support formatting
+     */
+    default String formatDuration(final Duration duration) {
+        throw new UnsupportedOperationException("formatDuration is not supported by this LoriTimeService");
+    }
+
+    /**
+     * Attaches or replaces a tracking tag of an online player. The active session segment is split so that
+     * subsequent time is attributed to the new tag value. The idle time before AFK detection counts towards the
+     * tag, and AFK time removal is not subtracted from tagged time, so tagged time can exceed the
+     * AFK-adjusted total.
+     * Tags are kept until the player leaves the network and are not persisted across sessions.
+     *
+     * @param uniqueId the player UUID, the player must be online
+     * @param key      namespaced tag key such as {@code myplugin:character}, lower case, at most 100 characters
+     * @param value    tag value, at most 191 characters
+     * @return future completed when the tag is applied
+     * @throws UnsupportedOperationException if the implementation does not support tracking tags
+     */
+    @SuppressWarnings("PMD.LinguisticNaming")
+    default CompletableFuture<Void> setTrackingTag(final UUID uniqueId, final String key, final String value) {
+        throw tagsUnsupported();
+    }
+
+    /**
+     * Removes a tracking tag of an online player and splits the active session segment.
+     *
+     * @param uniqueId the player UUID, the player must be online
+     * @param key      namespaced tag key
+     * @return future completed when the tag is removed
+     * @throws UnsupportedOperationException if the implementation does not support tracking tags
+     */
+    default CompletableFuture<Void> clearTrackingTag(final UUID uniqueId, final String key) {
+        throw tagsUnsupported();
+    }
+
+    /**
+     * Returns the online time a player accumulated while a tracking tag had the given value.
+     * AFK time and manual adjustments are not included.
+     *
+     * @param uniqueId the player UUID
+     * @param scope    the requested time scope
+     * @param tagKey   namespaced tag key
+     * @param tagValue tag value
+     * @return future for the tagged online time, empty if no time was recorded for the tag
+     * @throws UnsupportedOperationException if the implementation does not support tracking tags
+     */
+    default CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                                final String tagKey, final String tagValue) {
+        throw tagsUnsupported();
+    }
+
+    /**
+     * Returns the online time a player accumulated inside a time range while a tracking tag had the given value.
+     * AFK time and manual adjustments are not included.
+     *
+     * @param uniqueId the player UUID
+     * @param scope    the requested time scope
+     * @param range    the requested time range
+     * @param tagKey   namespaced tag key
+     * @param tagValue tag value
+     * @return future for the tagged online time, empty if no time was recorded for the tag in the range
+     * @throws UnsupportedOperationException if the implementation does not support tracking tags
+     */
+    default CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                                final TimeRange range, final String tagKey,
+                                                                final String tagValue) {
+        throw tagsUnsupported();
+    }
+
+    private static UnsupportedOperationException tagsUnsupported() {
+        return new UnsupportedOperationException("Tracking tags are not supported by this LoriTimeService");
+    }
 }

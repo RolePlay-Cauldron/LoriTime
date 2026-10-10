@@ -234,7 +234,8 @@ public class DataStorageManager {
         dbStorage.initializeRuntime();
         final UnifiedDatabaseStorage nameAndTimeStorage = createUnifiedDatabaseStorage(dbStorage);
         final AccumulatingTimeStorage accumulatingStorage = new AccumulatingTimeStorage(
-                loriTime.getLoggerFactory().create(AccumulatingTimeStorage.class), nameAndTimeStorage);
+                loriTime.getLoggerFactory().create(AccumulatingTimeStorage.class), nameAndTimeStorage,
+                loriTime::getEventDispatcher);
         this.storage = nameAndTimeStorage;
         this.runtimeStorage = accumulatingStorage;
         this.accumulator = accumulatingStorage;

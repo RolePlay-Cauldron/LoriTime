@@ -14,6 +14,7 @@ import com.jannik_kuehn.loritimevelocity.listener.LoriTimeUpdateVelocityListener
 import com.jannik_kuehn.loritimevelocity.listener.PlayerNameVelocityListener;
 import com.jannik_kuehn.loritimevelocity.listener.TimeAccumulatorVelocityListener;
 import com.jannik_kuehn.loritimevelocity.schedule.VelocityScheduleAdapter;
+import com.jannik_kuehn.loritimevelocity.util.VelocityEventDispatcher;
 import com.jannik_kuehn.loritimevelocity.util.VelocityMetrics;
 import com.jannik_kuehn.loritimevelocity.util.VelocityServer;
 import com.velocitypowered.api.event.EventManager;
@@ -129,6 +130,7 @@ public class LoriTimeVelocity {
 
     private void enableAsMaster() {
         final EventManager eventManager = proxyServer.getEventManager();
+        loriTimePlugin.setEventDispatcher(new VelocityEventDispatcher(eventManager));
         eventManager.register(this, new PlayerNameVelocityListener(loriTimePlugin));
         eventManager.register(this, new TimeAccumulatorVelocityListener(loriTimePlugin));
         eventManager.register(this, new LoriTimeUpdateVelocityListener(loriTimePlugin));

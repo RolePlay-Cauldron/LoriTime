@@ -32,7 +32,13 @@ public enum StorageMessageType {
     /**
      * Slave reports an observed world switch.
      */
-    WORLD_SWITCH("world_switch");
+    WORLD_SWITCH("world_switch"),
+
+    /**
+     * Slave reports the complete tracking tag set of a player.
+     * Masters that predate tracking tags ignore this operation as unknown.
+     */
+    TAGS("tags");
 
     /**
      * Wire payload value.

@@ -7,6 +7,7 @@ import com.jannik_kuehn.common.config.Configuration;
 import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.platform.CommonServer;
+import com.jannik_kuehn.common.platform.PlatformEventDispatcher;
 import com.jannik_kuehn.common.player.TrackedLoriTimePlayer;
 import com.jannik_kuehn.common.storage.contract.StatisticsStorage;
 import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
@@ -43,6 +44,21 @@ class MasteredAfkPlayerHandlingTest {
         verify(context.accumulator()).stopAccumulatingAndSaveOnlineTime(eq(PLAYER_ID), anyLong(),
                 eq(TimeEntryReason.PLAYER_AFK));
         verify(context.sender()).sendMessage(any(TextComponent.class));
+    }
+
+    @Test
+    void afkAndResumeAreReportedToPlatformDispatcher() throws Exception {
+        final TestContext context = new TestContext(false, false);
+        final PlatformEventDispatcher dispatcher = mock(PlatformEventDispatcher.class);
+        when(context.plugin().getEventDispatcher()).thenReturn(dispatcher);
+        final MasteredAfkPlayerHandling handling = new MasteredAfkPlayerHandling(context.plugin());
+        final TrackedLoriTimePlayer player = new TrackedLoriTimePlayer(PLAYER_ID, "Lorias_");
+
+        handling.executePlayerAfk(player, 15L);
+        handling.executePlayerResume(player);
+
+        verify(dispatcher).afkChanged(eq(PLAYER_ID), eq(true), any());
+        verify(dispatcher).afkChanged(eq(PLAYER_ID), eq(false), any());
     }
 
     @Test
@@ -144,6 +160,7 @@ class MasteredAfkPlayerHandlingTest {
             when(plugin().getStorage()).thenReturn(storage());
             when(plugin().getStatisticsStorage()).thenReturn(Optional.of(statistics()));
             when(plugin().getLocalization()).thenReturn(localization);
+            when(plugin().getEventDispatcher()).thenReturn(PlatformEventDispatcher.NOOP);
             when(server().getPlayer(PLAYER_ID)).thenReturn(Optional.of(sender()));
             when(server().getOnlinePlayers()).thenReturn(new CommonPlayerSender[]{sender()});
             when(sender().getName()).thenReturn("Lorias_");

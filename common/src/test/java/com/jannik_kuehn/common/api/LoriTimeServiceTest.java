@@ -3,10 +3,16 @@ package com.jannik_kuehn.common.api;
 import com.jannik_kuehn.common.LoriTimePlugin;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
+import com.jannik_kuehn.common.config.localization.Localization;
 import com.jannik_kuehn.common.exception.StorageException;
+import com.jannik_kuehn.common.platform.CommonPlayerSender;
+import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
 import com.jannik_kuehn.common.scheduler.PluginTask;
 import com.jannik_kuehn.common.service.LoriTimeServiceImpl;
+import com.jannik_kuehn.common.service.RemoteTagWriter;
+import com.jannik_kuehn.common.service.RemoteTimeReader;
+import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
@@ -27,7 +33,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ResourceLock("LoriTimeAPI")
-@SuppressWarnings({"PMD.TooManyMethods", "PMD.AvoidAccessibilityAlteration"})
+@SuppressWarnings({"PMD.TooManyMethods", "PMD.AvoidAccessibilityAlteration",
+        "PMD.UnitTestContainsTooManyAsserts"})
 class LoriTimeServiceTest {
 
     private static final UUID PLAYER_ID = UUID.fromString("44174cf6-e76c-4994-899c-3387284ecd62");
@@ -226,6 +233,209 @@ class LoriTimeServiceTest {
                 "Storage failures should be wrapped in the public API exception");
         assertInstanceOf(LoriTimeApiException.class, thrown.getCause(),
                 "Storage failures should be wrapped in the public API exception");
+    }
+
+    @Test
+    void completesExceptionallyWhenStorageThrowsRuntimeException() throws StorageException {
+        when(storage.getName(PLAYER_ID)).thenThrow(new IllegalStateException("boom"));
+
+        final CompletionException thrown = assertThrows(CompletionException.class, () -> service.findName(PLAYER_ID).join(),
+                "Runtime failures must complete the future instead of leaving it pending");
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(),
+                "Runtime failures should be wrapped in the public API exception");
+    }
+
+    @Test
+    void slaveRuntimeReadsCachedGlobalTime() {
+        when(plugin.getStorage()).thenReturn(null);
+        final RemoteTimeReader reader = mock(RemoteTimeReader.class);
+        when(reader.getCachedTime(PLAYER_ID)).thenReturn(OptionalLong.of(90));
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.of(reader));
+
+        assertEquals(Optional.of(Duration.ofSeconds(90)), service.getOnlineTime(PLAYER_ID).join(),
+                "Slave runtime should answer from the remote time reader");
+        assertFalse(service.isFullAccess(), "Slave runtime has no full API access");
+    }
+
+    @Test
+    void slaveRuntimeRequestsRefreshForUnknownPlayer() {
+        when(plugin.getStorage()).thenReturn(null);
+        final RemoteTimeReader reader = mock(RemoteTimeReader.class);
+        when(reader.getCachedTime(PLAYER_ID)).thenReturn(OptionalLong.empty());
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.of(reader));
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.getOnlineTime(PLAYER_ID).join(), "Unknown slave player should fail fast");
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+        verify(reader).requestRefresh(PLAYER_ID);
+    }
+
+    @Test
+    void slaveRuntimeRejectsUnsupportedCalls() {
+        when(plugin.getStorage()).thenReturn(null);
+        when(plugin.getRemoteTimeReader()).thenReturn(Optional.empty());
+        final TimeScope scope = TimeScope.server("survival");
+
+        assertAll(
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.getOnlineTime(PLAYER_ID).join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.getOnlineTime(PLAYER_ID, scope).join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.findUuid("Lorias_").join()).getCause()),
+                () -> assertInstanceOf(LoriTimeApiException.class, assertThrows(CompletionException.class,
+                        () -> service.addTime(PLAYER_ID, Duration.ofSeconds(1)).join()).getCause())
+        );
+    }
+
+    @Test
+    void formatsDurationWithConfiguredLocalization() {
+        final Localization localization = mock(Localization.class);
+        when(localization.getRawMessage("unit.hour.singular")).thenReturn("h");
+        when(localization.getRawMessage("unit.minute.plural")).thenReturn("min");
+        when(plugin.getLocalization()).thenReturn(localization);
+
+        assertEquals("1 h 2 min", service.formatDuration(Duration.ofSeconds(3720)),
+                "Expected facade to format with the configured units");
+    }
+
+    @Test
+    void fullAccessIsAvailableWithStorage() {
+        assertTrue(service.isFullAccess(), "Canonical runtime should report full access");
+    }
+
+    @Test
+    void setsTrackingTagThroughAccumulator() throws StorageException {
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        onlinePlayer(true);
+
+        service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join();
+
+        verify(accumulator).changeTrackingTag(eq(PLAYER_ID), eq("rp:character"), eq("Aria"), anyLong());
+    }
+
+    @Test
+    void clearsTrackingTagThroughAccumulator() throws StorageException {
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        onlinePlayer(true);
+
+        service.clearTrackingTag(PLAYER_ID, "rp:character").join();
+
+        verify(accumulator).changeTrackingTag(eq(PLAYER_ID), eq("rp:character"), isNull(), anyLong());
+    }
+
+    @Test
+    void rejectsInvalidTrackingTagInput() {
+        assertAll(
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> service.setTrackingTag(PLAYER_ID, "NoNamespace", "Aria")),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> service.setTrackingTag(PLAYER_ID, "rp:character", " ")),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> service.setTrackingTag(PLAYER_ID, "rp:character", "x".repeat(192))),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> service.clearTrackingTag(PLAYER_ID, "UPPER:case")),
+                () -> assertThrows(NullPointerException.class,
+                        () -> service.setTrackingTag(null, "rp:character", "Aria")),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, "bad key", "Aria"))
+        );
+    }
+
+    @Test
+    void failsTrackingTagChangeForOfflinePlayer() throws StorageException {
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        onlinePlayer(false);
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join());
+
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+        verify(accumulator, never()).changeTrackingTag(any(), any(), any(), anyLong());
+    }
+
+    @Test
+    void returnsTaggedOnlineTime() throws StorageException {
+        when(storage.getTaggedTime(PLAYER_ID, TimeScope.GLOBAL, "rp:character", "Aria"))
+                .thenReturn(OptionalLong.of(600));
+
+        assertEquals(Optional.of(Duration.ofSeconds(600)),
+                service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, "rp:character", "Aria").join(),
+                "Expected the tagged time as Duration");
+    }
+
+    @Test
+    void returnsRangedTaggedOnlineTime() throws StorageException {
+        final TimeRange range = TimeRange.between(Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-02-01T00:00:00Z"));
+        when(storage.getTaggedTime(PLAYER_ID, TimeScope.GLOBAL, range, "rp:character", "Aria"))
+                .thenReturn(OptionalLong.of(120));
+        when(storage.getTaggedTime(PLAYER_ID, TimeScope.GLOBAL, range, "rp:character", "Bob"))
+                .thenReturn(OptionalLong.empty());
+
+        assertEquals(Optional.of(Duration.ofSeconds(120)),
+                service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, range, "rp:character", "Aria").join(),
+                "Expected the ranged tagged time as Duration");
+        assertEquals(Optional.empty(),
+                service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, range, "rp:character", "Bob").join(),
+                "Expected empty when no tagged time exists");
+    }
+
+    @Test
+    void wrapsTaggedQueryFailures() throws StorageException {
+        when(storage.getTaggedTime(PLAYER_ID, TimeScope.GLOBAL, "rp:character", "Aria"))
+                .thenThrow(new StorageException("boom"));
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, "rp:character", "Aria").join());
+
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+    }
+
+    @Test
+    void slaveRuntimeForwardsTrackingTagChangesToMaster() {
+        when(plugin.getStorage()).thenReturn(null);
+        final RemoteTagWriter writer = mock(RemoteTagWriter.class);
+        when(plugin.getRemoteTagWriter()).thenReturn(Optional.of(writer));
+        onlinePlayer(true);
+
+        service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join();
+        service.clearTrackingTag(PLAYER_ID, "rp:character").join();
+
+        verify(writer).changeTag(PLAYER_ID, "rp:character", "Aria");
+        verify(writer).changeTag(PLAYER_ID, "rp:character", null);
+    }
+
+    @Test
+    void slaveRuntimeWithoutTagWriterRejectsTrackingTagChange() {
+        when(plugin.getStorage()).thenReturn(null);
+        when(plugin.getRemoteTagWriter()).thenReturn(Optional.empty());
+        onlinePlayer(true);
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join());
+
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+    }
+
+    @Test
+    void slaveRuntimeRejectsTaggedQueries() {
+        when(plugin.getStorage()).thenReturn(null);
+
+        final CompletionException thrown = assertThrows(CompletionException.class,
+                () -> service.getOnlineTime(PLAYER_ID, TimeScope.GLOBAL, "rp:character", "Aria").join());
+
+        assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
+    }
+
+    private void onlinePlayer(final boolean online) {
+        final CommonServer server = mock(CommonServer.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getPlayer(PLAYER_ID)).thenReturn(online
+                ? Optional.of(mock(CommonPlayerSender.class)) : Optional.empty());
     }
 
     private void resetApi() throws ReflectiveOperationException {

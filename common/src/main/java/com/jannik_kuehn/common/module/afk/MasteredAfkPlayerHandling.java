@@ -59,6 +59,7 @@ public class MasteredAfkPlayerHandling extends AfkHandling {
 
         final AfkTransition transition = determineAfkStartTransition(loriTimePlayer, timeToRemove);
         persistAfkStart(loriTimePlayer, timeToRemove);
+        loriTimePlugin.getEventDispatcher().afkChanged(loriTimePlayer.getUniqueId(), true, Instant.now());
         if (removeTimeEnabled && !hasPermission(loriTimePlayer, "loritime.afk.bypass.timeRemove")) {
             try {
                 log.debug("Removing online time for player " + loriTimePlayer.getUniqueId()
@@ -107,6 +108,7 @@ public class MasteredAfkPlayerHandling extends AfkHandling {
             return;
         }
         final AfkTransition transition = new AfkTransition(loriTimePlayer, AfkTransitionType.RESUME, 0L);
+        loriTimePlugin.getEventDispatcher().afkChanged(loriTimePlayer.getUniqueId(), false, Instant.now());
         chatAnnounce(loriTimePlayer, "message.afk.resumeAnnounce", "loritime.afk.announce.afkAnnounce");
         selfAfkMessage(loriTimePlayer, "message.afk.afkResume");
         persistAfkEnd(loriTimePlayer.getUniqueId(), AfkPeriodEndReason.RESUMED);

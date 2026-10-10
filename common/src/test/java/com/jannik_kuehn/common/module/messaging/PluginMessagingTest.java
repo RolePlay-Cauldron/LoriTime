@@ -126,6 +126,51 @@ class PluginMessagingTest {
     }
 
     @Test
+    void appliesRemoteTagsToAccumulator() throws StorageException {
+        final LoriTimePlugin plugin = pluginWithInlineScheduler();
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        final CommonServer server = mock(CommonServer.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getPlayer(PLAYER)).thenReturn(Optional.of(mock(CommonPlayerSender.class)));
+        final CapturingPluginMessaging messaging = new CapturingPluginMessaging(plugin);
+
+        messaging.processPluginMessage("loritime:storage", messaging.data(PLAYER, StorageMessageType.TAGS.wireValue(),
+                StorageMessageProtocol.VERSION, 7_000L, "rp:character", "Aria"));
+
+        verify(accumulator).changeTrackingTag(PLAYER, "rp:character", "Aria", 7_000L);
+    }
+
+    @Test
+    void appliesRemoteTagClearToAccumulator() throws StorageException {
+        final LoriTimePlugin plugin = pluginWithInlineScheduler();
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        final CommonServer server = mock(CommonServer.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getPlayer(PLAYER)).thenReturn(Optional.of(mock(CommonPlayerSender.class)));
+        final CapturingPluginMessaging messaging = new CapturingPluginMessaging(plugin);
+
+        messaging.processPluginMessage("loritime:storage", messaging.data(PLAYER, StorageMessageType.TAGS.wireValue(),
+                StorageMessageProtocol.VERSION, 7_000L, "rp:character", ""));
+
+        verify(accumulator).changeTrackingTag(PLAYER, "rp:character", null, 7_000L);
+    }
+
+    @Test
+    void ignoresRemoteTagsWithInvalidKey() throws StorageException {
+        final LoriTimePlugin plugin = pluginWithInlineScheduler();
+        final TimeAccumulator accumulator = mock(TimeAccumulator.class);
+        when(plugin.getAccumulator()).thenReturn(accumulator);
+        final CapturingPluginMessaging messaging = new CapturingPluginMessaging(plugin);
+
+        messaging.processPluginMessage("loritime:storage", messaging.data(PLAYER, StorageMessageType.TAGS.wireValue(),
+                StorageMessageProtocol.VERSION, 7_000L, "NoNamespace", "Aria"));
+
+        verify(accumulator, never()).changeTrackingTag(any(), any(), any(), anyLong());
+    }
+
+    @Test
     void ignoresUnsupportedWorldContextProtocolVersion() throws StorageException {
         final LoriTimePlugin plugin = pluginWithInlineScheduler();
         final TimeAccumulator accumulator = mock(TimeAccumulator.class);

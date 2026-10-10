@@ -166,6 +166,52 @@ class UnifiedDatabaseStorageTest {
     }
 
     @Test
+    void taggedTimeCountsOnlySegmentsCarryingTheTag() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.setPlayerName(PLAYER, "Lorias_");
+            final long untagged = storage.startSession(new com.jannik_kuehn.common.storage.model.PlayerSessionContext(
+                    PLAYER, "Lorias_", "survival", "global", 1_000L), TimeEntryReason.PLAYER_JOIN);
+            storage.updateSession(untagged, 11_000L, TimeEntryReason.TAG_SWITCH);
+            final long tagged = storage.startSession(new com.jannik_kuehn.common.storage.model.PlayerSessionContext(
+                    PLAYER, "Lorias_", "survival", "global", 11_000L, java.util.Map.of("rp:character", "Aria")),
+                    TimeEntryReason.PLAYER_JOIN);
+            storage.updateSession(tagged, 16_000L, TimeEntryReason.PLAYER_LEAVE);
+
+            assertEquals(OptionalLong.of(5L), storage.getTaggedTime(PLAYER, TimeScope.GLOBAL, "rp:character", "Aria"),
+                    "Expected only the tagged segment to count");
+            assertEquals(OptionalLong.of(5L),
+                    storage.getTaggedTime(PLAYER, TimeScope.server("survival"), "rp:character", "Aria"),
+                    "Expected the server scope to include the tagged segment");
+            assertEquals(OptionalLong.empty(), storage.getTaggedTime(PLAYER, TimeScope.GLOBAL, "rp:character", "Bob"),
+                    "Expected no time for another tag value");
+            assertEquals(OptionalLong.of(15L), storage.getTime(PLAYER), "Expected total time to include both segments");
+        }
+    }
+
+    @Test
+    void taggedTimeRespectsRange() throws Exception {
+        try (UnifiedDatabaseStorage storage = storage()) {
+            storage.setPlayerName(PLAYER, "Lorias_");
+            final long tagged = storage.startSession(new com.jannik_kuehn.common.storage.model.PlayerSessionContext(
+                    PLAYER, "Lorias_", "survival", "global", 10_000L, java.util.Map.of("rp:character", "Aria")),
+                    TimeEntryReason.PLAYER_JOIN);
+            storage.updateSession(tagged, 20_000L, TimeEntryReason.PLAYER_LEAVE);
+
+            final TimeRange half = TimeRange.between(Instant.ofEpochMilli(15_000L),
+                    Instant.ofEpochMilli(30_000L));
+            final TimeRange outside = TimeRange.between(Instant.ofEpochMilli(30_000L),
+                    Instant.ofEpochMilli(40_000L));
+
+            assertEquals(OptionalLong.of(5L),
+                    storage.getTaggedTime(PLAYER, TimeScope.GLOBAL, half, "rp:character", "Aria"),
+                    "Expected only the overlapping part of the tagged segment");
+            assertEquals(OptionalLong.empty(),
+                    storage.getTaggedTime(PLAYER, TimeScope.GLOBAL, outside, "rp:character", "Aria"),
+                    "Expected no time outside the segment");
+        }
+    }
+
+    @Test
     void updateSessionWorldChangesContextWithoutCreatingTimeRows() throws Exception {
         final long sessionId;
         try (UnifiedDatabaseStorage storage = storage()) {

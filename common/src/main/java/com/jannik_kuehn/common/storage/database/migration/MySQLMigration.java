@@ -31,8 +31,22 @@ public final class MySQLMigration {
         addMigrationOne(builder, tablePrefix);
         addMigrationTwo(builder, tablePrefix);
         addMigrationThree(builder, tablePrefix);
+        addMigrationFour(builder, tablePrefix);
 
         return builder.finish();
+    }
+
+    private static void addMigrationFour(final VersionListBuilder builder, final String tablePrefix) {
+        builder.version(4)
+                .addUnconditionalQuery("CREATE TABLE IF NOT EXISTS `" + tablePrefix + "_time_tag` ("
+                        + "`time_id` BIGINT NOT NULL,"
+                        + "`tag_key` VARCHAR(100) NOT NULL,"
+                        + "`tag_value` VARCHAR(191) NOT NULL,"
+                        + "PRIMARY KEY (`time_id`, `tag_key`),"
+                        + "INDEX `idx_time_tag_lookup` (`tag_key`, `tag_value`),"
+                        + "CONSTRAINT `fk_time_tag_time` FOREIGN KEY (`time_id`) REFERENCES `"
+                        + tablePrefix + "_time`(`id`) ON DELETE CASCADE) ENGINE InnoDB")
+                .finishVersion();
     }
 
     private static void addMigrationThree(final VersionListBuilder builder, final String tablePrefix) {
