@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [2.3.0] - 2026-10-10
+### Added
 - Added Paper and Velocity events for session start/end, AFK changes, time adjustments and tracking tag changes
 - Added tracking tags to the API (`setTrackingTag`, `clearTrackingTag`, tag-filtered `getOnlineTime`)
 - Added `formatDuration` and `isFullAccess` to the API
