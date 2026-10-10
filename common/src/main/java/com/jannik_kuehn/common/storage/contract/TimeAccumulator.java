@@ -5,6 +5,7 @@ import com.jannik_kuehn.common.storage.model.PlayerSessionContext;
 import com.jannik_kuehn.common.storage.model.SessionContextDefaults;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -88,6 +89,29 @@ public interface TimeAccumulator extends AutoCloseable {
      * @throws StorageException if the active session cannot be switched.
      */
     void switchWorldContext(UUID uuid, String world, long observedAtMs) throws StorageException;
+
+    /**
+     * Replaces the tracking tags of a player and splits the active session segment when they changed.
+     *
+     * @param uuid         the player UUID.
+     * @param tags         the complete next tag set, empty to clear.
+     * @param observedAtMs the switch timestamp in epoch milliseconds.
+     * @throws StorageException if the segments cannot be persisted or tags are unsupported.
+     */
+    default void switchTags(final UUID uuid, final Map<String, String> tags, final long observedAtMs)
+            throws StorageException {
+        throw new StorageException("Tracking tags are not supported by this accumulator");
+    }
+
+    /**
+     * Returns the tracking tags currently applied to a player.
+     *
+     * @param uuid the player UUID.
+     * @return immutable tags, empty when none.
+     */
+    default Map<String, String> getTrackingTags(final UUID uuid) {
+        return Map.of();
+    }
 
     /**
      * Flushes active session progress to storage.

@@ -71,6 +71,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
         "PMD.TooManyMethods"
 })
 public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaintenance, StatisticsStorage {
+    /**
+     * Range covering all stored time.
+     */
+    private static final TimeRange ALL_TIME = TimeRange.between(Instant.EPOCH, Instant.parse("9999-01-01T00:00:00Z"));
+
 
     /**
      * Actor label used when a legacy method does not provide explicit actor metadata.
@@ -526,10 +531,12 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
             try (Connection connection = provider.getConnection()) {
                 final long worldId = worldTable.ensureWorld(connection, context.server(), context.world());
                 final long playerId = playerTable.ensurePlayer(connection, context.uuid(), context.name());
-                return timeTable.insertSession(connection, playerId, worldId,
+                final long sessionId = timeTable.insertSession(connection, playerId, worldId,
                         Instant.ofEpochMilli(context.startedAtMs()),
                         Instant.ofEpochMilli(context.startedAtMs()),
                         reason);
+                timeTable.insertTags(connection, sessionId, context.tags());
+                return sessionId;
             }
         } catch (final SQLException ex) {
             throw new StorageException(ex);
@@ -645,6 +652,40 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
                 final long sessions = sessionSum.orElse(0L);
                 final long adjustments = adjustmentSum.orElse(0L);
                 return OptionalLong.of(sessions + adjustments);
+            }
+        } catch (final SQLException ex) {
+            throw new StorageException(ex);
+        } finally {
+            poolLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final String tagKey,
+                                      final String tagValue) throws StorageException {
+        return getTaggedTime(uniqueId, scope, ALL_TIME, tagKey, tagValue);
+    }
+
+    @Override
+    public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final TimeRange range,
+                                      final String tagKey, final String tagValue) throws StorageException {
+        Objects.requireNonNull(uniqueId);
+        Objects.requireNonNull(scope);
+        Objects.requireNonNull(range);
+        Objects.requireNonNull(tagKey);
+        Objects.requireNonNull(tagValue);
+        poolLock.readLock().lock();
+        try {
+            checkClosed();
+            try (Connection connection = provider.getConnection()) {
+                return switch (scope.type()) {
+                    case GLOBAL -> timeTable.sumForPlayerWithTag(connection, uniqueId, null, null,
+                            tagKey, tagValue, range);
+                    case SERVER -> timeTable.sumForPlayerWithTag(connection, uniqueId, scope.server(), null,
+                            tagKey, tagValue, range);
+                    case WORLD -> timeTable.sumForPlayerWithTag(connection, uniqueId, scope.server(), scope.world(),
+                            tagKey, tagValue, range);
+                };
             }
         } catch (final SQLException ex) {
             throw new StorageException(ex);

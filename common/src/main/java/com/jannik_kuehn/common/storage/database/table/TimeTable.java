@@ -206,6 +206,78 @@ public final class TimeTable {
     }
 
     /**
+     * Stores the tracking tags of a session row.
+     *
+     * @param connection database connection
+     * @param sessionId  session id
+     * @param tags       tags to store
+     * @throws SQLException if the insert fails
+     */
+    public void insertTags(final Connection connection, final long sessionId, final Map<String, String> tags)
+            throws SQLException {
+        if (tags.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement insert = connection.prepareStatement(
+                "INSERT INTO `" + tagTableName() + "` (`time_id`, `tag_key`, `tag_value`) VALUES (?, ?, ?)")) {
+            for (final Map.Entry<String, String> tag : tags.entrySet()) {
+                insert.setLong(1, sessionId);
+                insert.setString(2, tag.getKey());
+                insert.setString(3, tag.getValue());
+                insert.addBatch();
+            }
+            insert.executeBatch();
+        }
+    }
+
+    /**
+     * Calculates the session duration of a player in a scope for segments carrying one tag.
+     *
+     * @param connection database connection
+     * @param uuid       player UUID
+     * @param server     server name, or null for any server
+     * @param world      world name, or null for any world
+     * @param tagKey     tag key
+     * @param tagValue   tag value
+     * @param range      time range, {@link TimeRange#between(Instant, Instant)} with a wide window for all time
+     * @return optional duration sum
+     * @throws SQLException if lookup fails
+     */
+    public OptionalLong sumForPlayerWithTag(final Connection connection, final UUID uuid, final String server,
+                                            final String world, final String tagKey, final String tagValue,
+                                            final TimeRange range)
+            throws SQLException {
+        final StringBuilder sql = new StringBuilder("SELECT t.`join_time`, t.`leave_time` ")
+                .append(FROM_TIME).append(tableName).append(TIME_TABLE_ALIAS)
+                .append(JOIN_TABLE).append(playerTable).append(PLAYER_JOIN)
+                .append(JOIN_TABLE).append(tagTableName()).append("` g ON g.time_id = t.id ");
+        if (server != null) {
+            sql.append(JOIN_TABLE).append(worldTableName()).append(WORLD_TIME_JOIN)
+                    .append(JOIN_TABLE).append(serverTableName()).append(SERVER_TIME_JOIN);
+        }
+        sql.append("WHERE p.uuid = ? AND g.tag_key = ? AND g.tag_value = ?");
+        if (server != null) {
+            sql.append(" AND s.server = ?");
+        }
+        if (world != null) {
+            sql.append(" AND w.world = ?");
+        }
+        try (PreparedStatement select = connection.prepareStatement(sql.toString())) {
+            int index = 1;
+            select.setBytes(index++, UuidUtil.toBytes(uuid));
+            select.setString(index++, tagKey);
+            select.setString(index++, tagValue);
+            if (server != null) {
+                select.setString(index++, server);
+            }
+            if (world != null) {
+                select.setString(index, world);
+            }
+            return optionalRangedTotal(select, range);
+        }
+    }
+
+    /**
      * Updates the leave timestamp and reason for an existing session row.
      *
      * @param connection database connection
@@ -440,6 +512,12 @@ public final class TimeTable {
      * @throws SQLException if delete fails
      */
     public int deleteInactiveHistory(final Connection connection, final String cutoffSql) throws SQLException {
+        try (PreparedStatement deleteTags = connection.prepareStatement(
+                "DELETE FROM `" + tagTableName() + "` WHERE `time_id` IN (SELECT `id` FROM `" + tableName
+                        + "` WHERE `player_id` IN (SELECT `id` FROM `" + playerTable
+                        + "` WHERE `last_seen` IS NOT NULL AND `last_seen` < " + cutoffSql + "))")) {
+            deleteTags.executeUpdate();
+        }
         return playerTable.deleteInactiveHistory(connection, tableName, cutoffSql);
     }
 
@@ -452,6 +530,12 @@ public final class TimeTable {
      * @throws SQLException if delete fails
      */
     public int deleteForPlayer(final Connection connection, final long playerId) throws SQLException {
+        try (PreparedStatement deleteTags = connection.prepareStatement(
+                "DELETE FROM `" + tagTableName() + "` WHERE `time_id` IN (SELECT `id` FROM `"
+                        + tableName + "` WHERE `player_id` = ?)")) {
+            deleteTags.setLong(1, playerId);
+            deleteTags.executeUpdate();
+        }
         try (PreparedStatement delete = connection.prepareStatement(
                 "DELETE FROM `" + tableName + "` WHERE `player_id` = ?")) {
             delete.setLong(1, playerId);
@@ -542,6 +626,10 @@ public final class TimeTable {
             }
         }
         return matched ? OptionalLong.of(total) : OptionalLong.empty();
+    }
+
+    private String tagTableName() {
+        return tableName + "_tag";
     }
 
     private String worldTableName() {

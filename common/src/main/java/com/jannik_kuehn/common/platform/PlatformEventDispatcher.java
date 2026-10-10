@@ -4,6 +4,7 @@ import com.jannik_kuehn.common.api.storage.TimeScope;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -65,6 +66,19 @@ public interface PlatformEventDispatcher {
      */
     default void timeAdjusted(final UUID playerId, final Duration amount, final TimeScope scope, final String reason,
                               final String actorName, final Instant at) {
+        // ignored by default
+    }
+
+    /**
+     * The tracking tags of a player changed.
+     *
+     * @param playerId     the player UUID
+     * @param previousTags the tags before the change
+     * @param tags         the tags after the change
+     * @param at           when the tags changed
+     */
+    default void trackingTagsChanged(final UUID playerId, final Map<String, String> previousTags,
+                                     final Map<String, String> tags, final Instant at) {
         // ignored by default
     }
 }

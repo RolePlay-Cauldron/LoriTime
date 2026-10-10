@@ -7,6 +7,7 @@ import com.jannik_kuehn.common.exception.StorageException;
 import com.jannik_kuehn.common.module.afk.AfkTransitionType;
 import com.jannik_kuehn.common.platform.CommonPlayerSender;
 import com.jannik_kuehn.common.player.TrackedLoriTimePlayer;
+import com.jannik_kuehn.common.service.TrackingTagRules;
 import com.jannik_kuehn.common.utils.UuidUtil;
 
 import java.io.ByteArrayInputStream;
@@ -15,6 +16,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
@@ -224,6 +227,9 @@ public abstract class PluginMessaging {
             case WORLD_SWITCH:
                 switchRemoteWorldContext(playerUUID, input);
                 break;
+            case TAGS:
+                switchRemoteTags(playerUUID, input);
+                break;
             case SEND:
                 warnStorageIgnored(playerUUID, "operation '" + messageType.wireValue() + "' is not accepted by the master");
                 break;
@@ -258,6 +264,33 @@ public abstract class PluginMessaging {
         loriTimePlugin.getAccumulator().switchWorldContext(playerUUID, world, observedAtMs);
         loriTimePlugin.getAccumulator().getActiveSessionContext(playerUUID)
                 .ifPresent(context -> loriTimePlugin.rememberScope(context.server(), world));
+    }
+
+    private void switchRemoteTags(final UUID playerUUID, final DataInputStream input) throws IOException, StorageException {
+        if (!isSupportedStorageVersion(StorageMessageType.TAGS, input.readInt(), playerUUID)) {
+            return;
+        }
+        final long observedAtMs = input.readLong();
+        final int count = input.readInt();
+        if (count < 0 || count > TrackingTagRules.MAX_TAGS) {
+            warnStorageIgnored(playerUUID, "invalid tracking tag count " + count);
+            return;
+        }
+        final Map<String, String> tags = new HashMap<>();
+        for (int index = 0; index < count; index++) {
+            final String key = input.readUTF();
+            final String value = input.readUTF();
+            if (!TrackingTagRules.isValidKey(key) || !TrackingTagRules.isValidValue(value)) {
+                warnStorageIgnored(playerUUID, "invalid tracking tag '" + key + "'");
+                return;
+            }
+            tags.put(key, value);
+        }
+        if (loriTimePlugin.getServer().getPlayer(playerUUID).isEmpty()) {
+            warnStorageIgnored(playerUUID, "tracking tags for a player that is not online");
+            return;
+        }
+        loriTimePlugin.getAccumulator().switchTags(playerUUID, tags, observedAtMs);
     }
 
     private boolean isSupportedStorageVersion(final StorageMessageType messageType, final int protocolVersion, final UUID playerUUID) {

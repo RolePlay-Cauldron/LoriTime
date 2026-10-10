@@ -148,7 +148,8 @@ public final class StatisticsAggregator {
     }
 
     private static boolean isSwitch(final TimeEntryReason reason) {
-        return reason == TimeEntryReason.SERVER_SWITCH || reason == TimeEntryReason.WORLD_SWITCH;
+        return reason == TimeEntryReason.SERVER_SWITCH || reason == TimeEntryReason.WORLD_SWITCH
+                || reason == TimeEntryReason.TAG_SWITCH;
     }
 
     private static boolean endsNetwork(final TimeEntryReason reason) {

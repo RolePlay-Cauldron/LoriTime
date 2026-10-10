@@ -63,6 +63,11 @@ public enum TimeEntryReason {
     /**
      * Plugin shutdown persisted remaining online cache.
      */
-    SHUTDOWN_FLUSH
+    SHUTDOWN_FLUSH,
+
+    /**
+     * Session segment was split because a tracking tag changed.
+     */
+    TAG_SWITCH
 }
 

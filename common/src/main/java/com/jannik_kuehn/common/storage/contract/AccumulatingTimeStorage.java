@@ -28,6 +28,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
@@ -60,6 +61,11 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
      * Active persisted sessions keyed by player UUID.
      */
     private final ConcurrentMap<UUID, PersistedPlayerSession> onlineSessions = new ConcurrentHashMap<>();
+
+    /**
+     * Tracking tags of online players, kept across AFK pauses of a session.
+     */
+    private final ConcurrentMap<UUID, Map<String, String>> playerTags = new ConcurrentHashMap<>();
 
     /**
      * Bounded locks that serialize persistence for a single player.
@@ -171,6 +177,38 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
     }
 
     @Override
+    public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final String tagKey,
+                                      final String tagValue) throws StorageException {
+        Objects.requireNonNull(scope, "scope");
+        final OptionalLong storedTime = storage.getTaggedTime(uniqueId, scope, tagKey, tagValue);
+        final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);
+        final PlayerSessionContext context = activeSession == null ? null : activeSession.context();
+        if (context != null && scope.matches(context) && tagValue.equals(context.tags().get(tagKey))) {
+            final long accumulatedTime = Math.max(0L,
+                    (System.currentTimeMillis() - activeSession.lastPersistedAtMs()) / 1000L);
+            return OptionalLong.of(accumulatedTime + storedTime.orElse(0L));
+        }
+        return storedTime;
+    }
+
+    @Override
+    public OptionalLong getTaggedTime(final UUID uniqueId, final TimeScope scope, final TimeRange range,
+                                      final String tagKey, final String tagValue) throws StorageException {
+        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(range, "range");
+        final OptionalLong storedTime = storage.getTaggedTime(uniqueId, scope, range, tagKey, tagValue);
+        final PersistedPlayerSession activeSession = onlineSessions.get(uniqueId);
+        final PlayerSessionContext context = activeSession == null ? null : activeSession.context();
+        if (context != null && scope.matches(context) && tagValue.equals(context.tags().get(tagKey))) {
+            final long accumulatedTime = range.overlapSeconds(activeSession.lastPersistedAtMs(), System.currentTimeMillis());
+            if (accumulatedTime > 0L || storedTime.isPresent()) {
+                return OptionalLong.of(accumulatedTime + storedTime.orElse(0L));
+            }
+        }
+        return storedTime;
+    }
+
+    @Override
     public void addTime(final UUID uuid, final long additionalTime, final TimeEntryReason reason) throws StorageException {
         storage.addTime(uuid, additionalTime, reason);
     }
@@ -272,7 +310,8 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
                                   final String world, final long when)
             throws StorageException {
         withSessionLock(uuid, () -> {
-            final PlayerSessionContext context = new PlayerSessionContext(uuid, name, server, world, when);
+            final PlayerSessionContext context = new PlayerSessionContext(uuid, name, server, world, when,
+                    playerTags.getOrDefault(uuid, Map.of()));
             final long sessionId = storage.startSession(context, TimeEntryReason.PLAYER_JOIN);
             final PersistedPlayerSession previous = onlineSessions.put(uuid, new PersistedPlayerSession(sessionId, context, when));
             if (previous != null) {
@@ -288,6 +327,9 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
             throws StorageException {
         final AtomicBoolean ended = new AtomicBoolean();
         withSessionLock(uuid, () -> {
+            if (reason != TimeEntryReason.PLAYER_AFK) {
+                playerTags.remove(uuid);
+            }
             final PersistedPlayerSession session = onlineSessions.remove(uuid);
             if (session != null) {
                 storage.updateSession(session.sessionId(), when, reason);
@@ -304,8 +346,9 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
                               final String world, final long when)
             throws StorageException {
         withSessionLock(uuid, () -> {
-            final PlayerSessionContext next = new PlayerSessionContext(uuid, name, server, world, when);
             final PersistedPlayerSession current = onlineSessions.get(uuid);
+            final PlayerSessionContext next = new PlayerSessionContext(uuid, name, server, world, when,
+                    current == null ? playerTags.getOrDefault(uuid, Map.of()) : current.context().tags());
             if (current != null
                     && current.context().server().equals(server)
                     && current.context().world().equals(world)) {
@@ -329,7 +372,7 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
             }
             final PlayerSessionContext previous = current.context();
             final PlayerSessionContext updated = new PlayerSessionContext(previous.uuid(), previous.name(),
-                    previous.server(), world, previous.startedAtMs());
+                    previous.server(), world, previous.startedAtMs(), previous.tags());
             if (onlineSessions.replace(uuid, current,
                     new PersistedPlayerSession(current.sessionId(), updated, current.lastPersistedAtMs()))) {
                 storage.updateSessionWorld(current.sessionId(), updated.server(), updated.world());
@@ -347,12 +390,44 @@ public class AccumulatingTimeStorage implements UnifiedStorage, TimeAccumulator,
             }
             final PlayerSessionContext previous = current.context();
             final PlayerSessionContext next = new PlayerSessionContext(previous.uuid(), previous.name(),
-                    previous.server(), world, observedAtMs);
+                    previous.server(), world, observedAtMs, previous.tags());
             final long sessionId = storage.startSession(next, TimeEntryReason.PLAYER_JOIN);
             if (onlineSessions.replace(uuid, current, new PersistedPlayerSession(sessionId, next, observedAtMs))) {
                 storage.updateSession(current.sessionId(), observedAtMs, TimeEntryReason.WORLD_SWITCH);
             }
         });
+    }
+
+    @Override
+    public void switchTags(final UUID uuid, final Map<String, String> tags, final long observedAtMs)
+            throws StorageException {
+        Objects.requireNonNull(tags, "tags");
+        final Map<String, String> next = Map.copyOf(tags);
+        final AtomicReference<Map<String, String>> previousTags = new AtomicReference<>(Map.of());
+        withSessionLock(uuid, () -> {
+            final Map<String, String> replaced = next.isEmpty() ? playerTags.remove(uuid) : playerTags.put(uuid, next);
+            previousTags.set(replaced == null ? Map.of() : replaced);
+            final PersistedPlayerSession current = onlineSessions.get(uuid);
+            if (current == null || current.context().tags().equals(next)) {
+                return;
+            }
+            final long switchedAtMs = Math.max(observedAtMs, current.context().startedAtMs());
+            final PlayerSessionContext previous = current.context();
+            final PlayerSessionContext updated = new PlayerSessionContext(previous.uuid(), previous.name(),
+                    previous.server(), previous.world(), switchedAtMs, next);
+            final long sessionId = storage.startSession(updated, TimeEntryReason.PLAYER_JOIN);
+            if (onlineSessions.replace(uuid, current, new PersistedPlayerSession(sessionId, updated, switchedAtMs))) {
+                storage.updateSession(current.sessionId(), switchedAtMs, TimeEntryReason.TAG_SWITCH);
+            }
+        });
+        if (!previousTags.get().equals(next)) {
+            eventDispatcher.get().trackingTagsChanged(uuid, previousTags.get(), next, Instant.ofEpochMilli(observedAtMs));
+        }
+    }
+
+    @Override
+    public Map<String, String> getTrackingTags(final UUID uuid) {
+        return playerTags.getOrDefault(uuid, Map.of());
     }
 
     @Override

@@ -11,6 +11,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added native Paper events `LoriTimeSessionStartEvent`, `LoriTimeSessionEndEvent`, `LoriTimeAfkStateChangeEvent` and `LoriTimeTimeAdjustedEvent` (package `com.jannik_kuehn.loritimepaper.event`)
 - Added the same events as Velocity events (package `com.jannik_kuehn.loritimevelocity.event`)
 - Events are fired on standalone and master installations; they are asynchronous on Paper when fired off the main thread
+- Added tracking tags to the public API: `LoriTimeService#setTrackingTag`, `#clearTrackingTag` and a tag-filtered `#getOnlineTime` attribute online time to a namespaced key/value tag, for example one roleplay character per player; AFK time is excluded
+- Added the `LoriTimeTrackingTagChangeEvent` as Paper and Velocity event
+- Added the `loritime:storage` operation `tags` so slave servers can set tracking tags (masters without tag support ignore it)
+- Added database schema version 4 with a `_time_tag` table, applied automatically on startup
 ### Changed
 - Updated several dependencies
 - Public API on slave servers now answers `getOnlineTime(UUID)` for online players from the slave read cache; all other calls fail with a `LoriTimeApiException`

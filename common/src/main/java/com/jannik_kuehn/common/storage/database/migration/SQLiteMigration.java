@@ -34,8 +34,22 @@ public final class SQLiteMigration {
         addMigrationOne(builder, tablePrefix);
         addMigrationTwo(builder, tablePrefix);
         addMigrationThree(builder, tablePrefix);
+        addMigrationFour(builder, tablePrefix);
 
         return builder.finish();
+    }
+
+    private static void addMigrationFour(final VersionListBuilder builder, final String tablePrefix) {
+        builder.version(4)
+                .addUnconditionalQuery("CREATE TABLE IF NOT EXISTS `" + tablePrefix + "_time_tag` ("
+                        + "`time_id` INTEGER NOT NULL,"
+                        + "`tag_key` TEXT NOT NULL,"
+                        + "`tag_value` TEXT NOT NULL,"
+                        + "PRIMARY KEY (`time_id`, `tag_key`),"
+                        + "FOREIGN KEY (`time_id`) REFERENCES `" + tablePrefix + "_time`(`id`) ON DELETE CASCADE)")
+                .addUnconditionalQuery("CREATE INDEX IF NOT EXISTS `idx_" + tablePrefix + "_time_tag_lookup` "
+                        + "ON `" + tablePrefix + "_time_tag` (`tag_key`, `tag_value`)")
+                .finishVersion();
     }
 
     private static void addMigrationThree(final VersionListBuilder builder, final String tablePrefix) {

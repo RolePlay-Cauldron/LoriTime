@@ -51,6 +51,19 @@ class StatisticsAggregatorTest {
     }
 
     @Test
+    void tagSwitchSegmentsFormOneLogicalSession() {
+        final List<SessionHistoryRow> rows = List.of(
+                row(PLAYER, "Lorias_", "survival", "world", 0, 60, TimeEntryReason.TAG_SWITCH, START),
+                row(PLAYER, "Lorias_", "survival", "world", 60, 120, TimeEntryReason.PLAYER_LEAVE, START));
+
+        final var result = StatisticsAggregator.aggregate(new StatisticsRequest(
+                        TimeRange.between(START, START.plusSeconds(180)), TimeScope.GLOBAL, Duration.ofSeconds(90)),
+                rows, List.of());
+
+        assertEquals(1, result.sessions(), "Expected tag switched segments to form one session");
+    }
+
+    @Test
     void clipsIntervalsAndExcludesIncompleteBounceCandidates() {
         final var row = row(PLAYER, "Lorias_", "survival", "world", -60, 60,
                 TimeEntryReason.AUTO_FLUSH, START.minusSeconds(60));

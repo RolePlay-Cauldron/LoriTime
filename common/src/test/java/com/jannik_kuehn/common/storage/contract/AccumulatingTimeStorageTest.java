@@ -118,6 +118,52 @@ class AccumulatingTimeStorageTest {
     }
 
     @Test
+    void tagSwitchSplitsSegmentAndCarriesTagsIntoNextSegment() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 1_000L);
+        accumulator.switchTags(PLAYER, Map.of("rp:character", "Aria"), 4_000L);
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 9_000L, TimeEntryReason.PLAYER_LEAVE);
+
+        assertEquals(2, storage.sessions.size(), "Expected the tag change to split the segment");
+        assertEquals(TimeEntryReason.TAG_SWITCH, storage.sessions.get(0).reason(), "Expected the TAG_SWITCH reason");
+        assertEquals(3L, storage.sessions.get(0).durationSeconds(), "Expected the untagged segment duration");
+        assertEquals(Map.of(), storage.startedContexts.get(0).tags(), "Expected no tags on the first segment");
+        assertEquals(Map.of("rp:character", "Aria"), storage.startedContexts.get(1).tags(),
+                "Expected the tag on the second segment");
+        assertEquals(5L, storage.sessions.get(1).durationSeconds(), "Expected the tagged segment duration");
+    }
+
+    @Test
+    void tagsSurviveAfkPauseAndAreDroppedOnLeave() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 1_000L);
+        accumulator.switchTags(PLAYER, Map.of("rp:character", "Aria"), 2_000L);
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 3_000L, TimeEntryReason.PLAYER_AFK);
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 8_000L);
+
+        assertEquals(Map.of("rp:character", "Aria"), storage.startedContexts.get(2).tags(),
+                "Expected the resumed segment to carry the tag");
+
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 9_000L, TimeEntryReason.PLAYER_LEAVE);
+        assertEquals(Map.of(), accumulator.getTrackingTags(PLAYER), "Expected tags to be cleared on leave");
+    }
+
+    @Test
+    void unchangedTagsDoNotSplitSegment() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 1_000L);
+        accumulator.switchTags(PLAYER, Map.of(), 4_000L);
+
+        assertEquals(1, storage.sessions.size(), "Expected no additional segment");
+    }
+
+    @Test
     void contextSwitchPersistsPreviousContextAndTracksNext() throws StorageException {
         final FakeUnifiedStorage storage = new FakeUnifiedStorage();
         final AccumulatingTimeStorage accumulator = accumulator(storage);
@@ -412,6 +458,23 @@ class AccumulatingTimeStorageTest {
                 eq("MANUAL_ADJUSTMENT"), eq("Admin"), any(Instant.class));
     }
 
+    @Test
+    void notifiesDispatcherAboutTagChangesOnlyWhenTagsDiffer() throws StorageException {
+        final PlatformEventDispatcher dispatcher = mock(PlatformEventDispatcher.class);
+        final AccumulatingTimeStorage accumulator = new AccumulatingTimeStorage(mock(WrappedLogger.class),
+                new FakeUnifiedStorage(), () -> dispatcher);
+
+        accumulator.switchTags(PLAYER, Map.of("rp:character", "Aria"), 2_000L);
+        accumulator.switchTags(PLAYER, Map.of("rp:character", "Aria"), 3_000L);
+        accumulator.switchTags(PLAYER, Map.of(), 4_000L);
+
+        verify(dispatcher).trackingTagsChanged(PLAYER, Map.of(), Map.of("rp:character", "Aria"),
+                Instant.ofEpochMilli(2_000L));
+        verify(dispatcher).trackingTagsChanged(PLAYER, Map.of("rp:character", "Aria"), Map.of(),
+                Instant.ofEpochMilli(4_000L));
+        verifyNoMoreInteractions(dispatcher);
+    }
+
     private AccumulatingTimeStorage accumulator(final FakeUnifiedStorage storage) {
         return new AccumulatingTimeStorage(mock(WrappedLogger.class), storage);
     }
@@ -424,6 +487,8 @@ class AccumulatingTimeStorageTest {
     private static class FakeUnifiedStorage implements UnifiedStorage, StatisticsStorage {
 
         protected final List<PlayerSessionChunk> sessions = new ArrayList<>();
+
+        private final List<PlayerSessionContext> startedContexts = new ArrayList<>();
 
         private final Map<UUID, Long> adjustments = new java.util.HashMap<>();
 
@@ -558,6 +623,7 @@ class AccumulatingTimeStorageTest {
             final PlayerSessionChunk session = new PlayerSessionChunk(context.uuid(), context.name(), context.server(), context.world(),
                     context.startedAtMs(), context.startedAtMs(), reason);
             sessions.add(session);
+            startedContexts.add(context);
             return sessions.size() - 1L;
         }
 

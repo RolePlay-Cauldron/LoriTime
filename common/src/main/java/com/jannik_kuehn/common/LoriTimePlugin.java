@@ -26,6 +26,7 @@ import com.jannik_kuehn.common.platform.CommonServer;
 import com.jannik_kuehn.common.platform.PlatformEventDispatcher;
 import com.jannik_kuehn.common.player.LoriTimePlayerConverter;
 import com.jannik_kuehn.common.scheduler.PluginScheduler;
+import com.jannik_kuehn.common.service.RemoteTagWriter;
 import com.jannik_kuehn.common.service.RemoteTimeReader;
 import com.jannik_kuehn.common.storage.DataStorageManager;
 import com.jannik_kuehn.common.storage.StorageMigrationService;
@@ -138,6 +139,11 @@ public class LoriTimePlugin {
      * Read-only time source for runtimes without canonical storage (slave mode).
      */
     private volatile RemoteTimeReader remoteTimeReader;
+
+    /**
+     * Forwards tracking tag changes to the master, only present on slave runtimes.
+     */
+    private volatile RemoteTagWriter remoteTagWriter;
 
     /**
      * Bridge to the native event system of the running platform.
@@ -562,6 +568,24 @@ public class LoriTimePlugin {
      */
     public void setRemoteTimeReader(final RemoteTimeReader remoteTimeReader) {
         this.remoteTimeReader = remoteTimeReader;
+    }
+
+    /**
+     * Registers the writer that forwards tracking tag changes to the master.
+     *
+     * @param remoteTagWriter the {@link RemoteTagWriter}, or {@code null} to unregister.
+     */
+    public void setRemoteTagWriter(final RemoteTagWriter remoteTagWriter) {
+        this.remoteTagWriter = remoteTagWriter;
+    }
+
+    /**
+     * Getter of the {@link RemoteTagWriter}.
+     *
+     * @return the registered {@link RemoteTagWriter}, if any.
+     */
+    public Optional<RemoteTagWriter> getRemoteTagWriter() {
+        return Optional.ofNullable(remoteTagWriter);
     }
 
     /**

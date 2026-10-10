@@ -112,6 +112,7 @@ public class LoriTimePaper extends JavaPlugin {
         slaveSessionReporter = new SlaveSessionReporter(this, paperPluginMessenger,
                 loriTimePlugin.getConfig().getInt("general.saveInterval"));
         loriTimePlugin.setRemoteTimeReader(slaveReadCache);
+        loriTimePlugin.setRemoteTagWriter(slaveSessionReporter);
         Bukkit.getPluginManager().registerEvents(slaveReadCache, this);
         Bukkit.getPluginManager().registerEvents(slaveSessionReporter, this);
         Bukkit.getServer().getMessenger().registerIncomingPluginChannel(this, "loritime:storage", slaveReadCache);

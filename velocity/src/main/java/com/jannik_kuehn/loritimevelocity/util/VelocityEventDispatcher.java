@@ -6,10 +6,12 @@ import com.jannik_kuehn.loritimevelocity.event.LoriTimeAfkStateChangeEvent;
 import com.jannik_kuehn.loritimevelocity.event.LoriTimeSessionEndEvent;
 import com.jannik_kuehn.loritimevelocity.event.LoriTimeSessionStartEvent;
 import com.jannik_kuehn.loritimevelocity.event.LoriTimeTimeAdjustedEvent;
+import com.jannik_kuehn.loritimevelocity.event.LoriTimeTrackingTagChangeEvent;
 import com.velocitypowered.api.event.EventManager;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -50,5 +52,11 @@ public class VelocityEventDispatcher implements PlatformEventDispatcher {
     public void timeAdjusted(final UUID playerId, final Duration amount, final TimeScope scope, final String reason,
                              final String actorName, final Instant at) {
         eventManager.fireAndForget(new LoriTimeTimeAdjustedEvent(playerId, amount, scope, reason, actorName, at));
+    }
+
+    @Override
+    public void trackingTagsChanged(final UUID playerId, final Map<String, String> previousTags,
+                                    final Map<String, String> tags, final Instant at) {
+        eventManager.fireAndForget(new LoriTimeTrackingTagChangeEvent(playerId, previousTags, tags, at));
     }
 }

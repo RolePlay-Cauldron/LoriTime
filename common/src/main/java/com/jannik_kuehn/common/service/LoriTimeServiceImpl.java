@@ -7,17 +7,21 @@ import com.jannik_kuehn.common.api.LoriTimeService;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
-import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
+import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
+import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Default public facade implementation.
@@ -35,7 +39,12 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     private static final String UNIQUE_ID_PARAMETER = "uniqueId";
 
     /**
-     * Actor name used for API adjustments without an explicit actor.
+     * Serializes read-modify-write cycles on tracking tags.
+     */
+    private final Object tagLock = new Object();
+
+    /**
+     * The backing LoriTime plugin.
      */
     private final LoriTimePlugin plugin;
 
@@ -298,6 +307,120 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     @Override
     public boolean isFullAccess() {
         return plugin.getStorage() != null;
+    }
+
+    /**
+     * Attaches or replaces a tracking tag of an online player.
+     *
+     * @param uniqueId the player UUID.
+     * @param key      the namespaced tag key.
+     * @param value    the tag value.
+     * @return future completed when the tag is applied.
+     */
+    @Override
+    public CompletableFuture<Void> setTrackingTag(final UUID uniqueId, final String key, final String value) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        TrackingTagRules.requireValidKey(key);
+        TrackingTagRules.requireValidValue(value);
+        return runAsync("Could not set tracking tag for UUID " + uniqueId, () -> {
+            if (plugin.getStorage() == null) {
+                forwardRemoteTag(uniqueId, key, value);
+            } else {
+                updateTags(uniqueId, tags -> tags.put(key, value));
+            }
+        });
+    }
+
+    /**
+     * Removes a tracking tag of an online player.
+     *
+     * @param uniqueId the player UUID.
+     * @param key      the namespaced tag key.
+     * @return future completed when the tag is removed.
+     */
+    @Override
+    public CompletableFuture<Void> clearTrackingTag(final UUID uniqueId, final String key) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        TrackingTagRules.requireValidKey(key);
+        return runAsync("Could not clear tracking tag for UUID " + uniqueId, () -> {
+            if (plugin.getStorage() == null) {
+                forwardRemoteTag(uniqueId, key, null);
+            } else {
+                updateTags(uniqueId, tags -> tags.remove(key));
+            }
+        });
+    }
+
+    /**
+     * Returns the online time attributed to a tracking tag value.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the requested time scope.
+     * @param tagKey   the namespaced tag key.
+     * @param tagValue the tag value.
+     * @return future for the tagged online time.
+     */
+    @Override
+    public CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                               final String tagKey, final String tagValue) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        Objects.requireNonNull(scope, "scope");
+        TrackingTagRules.requireValidKey(tagKey);
+        TrackingTagRules.requireValidValue(tagValue);
+        return supplyAsync("Could not query tagged online time for UUID " + uniqueId, () -> {
+            final OptionalLong seconds = requireStorage("query tagged online time")
+                    .getTaggedTime(uniqueId, scope, tagKey, tagValue);
+            return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
+        });
+    }
+
+    /**
+     * Returns the online time inside a time range attributed to a tracking tag value.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the requested time scope.
+     * @param range    the requested time range.
+     * @param tagKey   the namespaced tag key.
+     * @param tagValue the tag value.
+     * @return future for the tagged online time.
+     */
+    @Override
+    public CompletableFuture<Optional<Duration>> getOnlineTime(final UUID uniqueId, final TimeScope scope,
+                                                               final TimeRange range, final String tagKey,
+                                                               final String tagValue) {
+        Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
+        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(range, "range");
+        TrackingTagRules.requireValidKey(tagKey);
+        TrackingTagRules.requireValidValue(tagValue);
+        return supplyAsync("Could not query tagged online time for UUID " + uniqueId, () -> {
+            final OptionalLong seconds = requireStorage("query ranged tagged online time")
+                    .getTaggedTime(uniqueId, scope, range, tagKey, tagValue);
+            return seconds.isPresent() ? Optional.of(Duration.ofSeconds(seconds.getAsLong())) : Optional.empty();
+        });
+    }
+
+    private void forwardRemoteTag(final UUID uniqueId, final String key, final String value) {
+        final RemoteTagWriter writer = plugin.getRemoteTagWriter().orElseThrow(() -> new LoriTimeApiException(
+                "Cannot change tracking tags: this server has no canonical LoriTime storage (slave mode) "
+                        + "and no tag writer is registered"));
+        if (plugin.getServer().getPlayer(uniqueId).isEmpty()) {
+            throw new LoriTimeApiException("Cannot change tracking tags: player " + uniqueId + " is not online");
+        }
+        writer.changeTag(uniqueId, key, value);
+    }
+
+    private void updateTags(final UUID uniqueId, final Consumer<Map<String, String>> change) throws StorageException {
+        requireStorage("change tracking tags");
+        if (plugin.getServer().getPlayer(uniqueId).isEmpty()) {
+            throw new LoriTimeApiException("Cannot change tracking tags: player " + uniqueId + " is not online");
+        }
+        synchronized (tagLock) {
+            final TimeAccumulator accumulator = plugin.getAccumulator();
+            final Map<String, String> tags = new HashMap<>(accumulator.getTrackingTags(uniqueId));
+            change.accept(tags);
+            accumulator.switchTags(uniqueId, tags, System.currentTimeMillis());
+        }
     }
 
     private UnifiedStorage requireStorage(final String operation) {

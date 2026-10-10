@@ -108,6 +108,37 @@ public interface UnifiedStorage extends TimeQueryStorage, TimeAdjustmentStorage,
     @Override
     OptionalLong getTime(UUID uniqueId, TimeScope scope, TimeRange range) throws StorageException;
 
+    /**
+     * Returns the stored session time of segments that carried one tracking tag.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the time scope.
+     * @param tagKey   the tag key.
+     * @param tagValue the tag value.
+     * @return the tagged session seconds, empty when none were recorded.
+     * @throws StorageException if lookup fails or tags are unsupported.
+     */
+    default OptionalLong getTaggedTime(UUID uniqueId, TimeScope scope, String tagKey, String tagValue)
+            throws StorageException {
+        throw new StorageException("Tracking tags are not supported by the active storage");
+    }
+
+    /**
+     * Returns the stored session time of segments that carried one tracking tag inside a time range.
+     *
+     * @param uniqueId the player UUID.
+     * @param scope    the time scope.
+     * @param range    the time range.
+     * @param tagKey   the tag key.
+     * @param tagValue the tag value.
+     * @return the tagged session seconds, empty when none were recorded.
+     * @throws StorageException if lookup fails or tags are unsupported.
+     */
+    default OptionalLong getTaggedTime(UUID uniqueId, TimeScope scope, TimeRange range, String tagKey,
+                                       String tagValue) throws StorageException {
+        throw new StorageException("Tracking tags are not supported by the active storage");
+    }
+
     @Override
     void addTime(UUID uuid, long additionalTime, TimeEntryReason reason) throws StorageException;
 
