@@ -105,6 +105,20 @@ public interface TimeAccumulator extends AutoCloseable {
     }
 
     /**
+     * Sets or clears a single tracking tag atomically and splits the active session segment when it changed.
+     *
+     * @param uuid         the player UUID.
+     * @param key          the namespaced tag key.
+     * @param value        the tag value, or null to clear the tag.
+     * @param observedAtMs the switch timestamp in epoch milliseconds.
+     * @throws StorageException if the segments cannot be persisted or tags are unsupported.
+     */
+    default void changeTrackingTag(final UUID uuid, final String key, final String value, final long observedAtMs)
+            throws StorageException {
+        throw new StorageException("Tracking tags are not supported by this accumulator");
+    }
+
+    /**
      * Returns the tracking tags currently applied to a player.
      *
      * @param uuid the player UUID.

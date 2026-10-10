@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
@@ -523,7 +524,7 @@ public final class TimeTable {
      */
     public int deleteInactiveHistory(final Connection connection, final String cutoffSql) throws SQLException {
         try (PreparedStatement deleteTags = connection.prepareStatement(
-                "DELETE FROM `" + tagTableName() + "` WHERE `time_id` IN (SELECT `id` FROM `" + tableName
+                deleteTagsWhereTimeIdIn() + tableName
                         + "` WHERE `player_id` IN (SELECT `id` FROM `" + playerTable
                         + "` WHERE `last_seen` IS NOT NULL AND `last_seen` < " + cutoffSql + "))")) {
             deleteTags.executeUpdate();
@@ -541,7 +542,7 @@ public final class TimeTable {
      */
     public int deleteForPlayer(final Connection connection, final long playerId) throws SQLException {
         try (PreparedStatement deleteTags = connection.prepareStatement(
-                "DELETE FROM `" + tagTableName() + "` WHERE `time_id` IN (SELECT `id` FROM `"
+                deleteTagsWhereTimeIdIn()
                         + tableName + "` WHERE `player_id` = ?)")) {
             deleteTags.setLong(1, playerId);
             deleteTags.executeUpdate();
@@ -551,6 +552,66 @@ public final class TimeTable {
             delete.setLong(1, playerId);
             return delete.executeUpdate();
         }
+    }
+
+    /**
+     * Deletes the tags of the given session rows. Needed because SQLite does not enforce the foreign key cascade.
+     *
+     * @param connection database connection
+     * @param sessionIds session row ids
+     * @throws SQLException if delete fails
+     */
+    public void deleteTagsForSessions(final Connection connection, final List<Long> sessionIds)
+            throws SQLException {
+        if (sessionIds.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM `" + tagTableName() + "` WHERE `time_id` = ?")) {
+            for (final long id : sessionIds) {
+                delete.setLong(1, id);
+                delete.addBatch();
+            }
+            delete.executeBatch();
+        }
+    }
+
+    /**
+     * Deletes the tags of all session rows in a world.
+     *
+     * @param connection database connection
+     * @param worldId    world id
+     * @throws SQLException if delete fails
+     */
+    public void deleteTagsForWorld(final Connection connection, final long worldId) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement(
+                deleteTagsWhereTimeIdIn()
+                        + tableName + "` WHERE `world_id` = ?)")) {
+            delete.setLong(1, worldId);
+            delete.executeUpdate();
+        }
+    }
+
+    /**
+     * Deletes the tags of all session rows in all worlds of a server.
+     *
+     * @param connection database connection
+     * @param worldTable world table name
+     * @param serverId   server id
+     * @throws SQLException if delete fails
+     */
+    public void deleteTagsForServer(final Connection connection, final String worldTable, final long serverId)
+            throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement(
+                deleteTagsWhereTimeIdIn() + tableName
+                        + "` WHERE `world_id` IN (SELECT `id` FROM `" + worldTable + "` WHERE `server_id` = ?))")) {
+            delete.setLong(1, serverId);
+            delete.executeUpdate();
+        }
+    }
+
+    private String deleteTagsWhereTimeIdIn() {
+        return "DELETE FROM `" + tagTableName() + "` WHERE `time_id` IN (SELECT `id` FROM `";
     }
 
     private boolean shouldUpdateLatest(final TimeEntryReason reason) {

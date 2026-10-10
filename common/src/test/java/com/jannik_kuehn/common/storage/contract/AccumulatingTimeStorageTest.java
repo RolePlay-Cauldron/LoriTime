@@ -153,6 +153,47 @@ class AccumulatingTimeStorageTest {
     }
 
     @Test
+    void lateTagChangeAfterLeaveDoesNotLeakIntoNextSession() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 1_000L);
+        accumulator.stopAccumulatingAndSaveOnlineTime(PLAYER, 5_000L, TimeEntryReason.PLAYER_LEAVE);
+        accumulator.changeTrackingTag(PLAYER, "rp:character", "Aria", 4_000L);
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 8_000L);
+
+        assertEquals(Map.of(), storage.startedContexts.get(1).tags(), "Expected no stale tags in the next session");
+    }
+
+    @Test
+    void changeTrackingTagKeepsOtherTags() throws StorageException {
+        final FakeUnifiedStorage storage = new FakeUnifiedStorage();
+        final AccumulatingTimeStorage accumulator = accumulator(storage);
+
+        accumulator.startAccumulating(PLAYER, "Lorias_", "lobby", "spawn", 1_000L);
+        accumulator.changeTrackingTag(PLAYER, "rp:character", "Aria", 2_000L);
+        accumulator.changeTrackingTag(PLAYER, "rp:job", "smith", 3_000L);
+        accumulator.changeTrackingTag(PLAYER, "rp:character", null, 4_000L);
+
+        assertEquals(Map.of("rp:job", "smith"), accumulator.getTrackingTags(PLAYER),
+                "Expected single tag changes to keep the other tags");
+    }
+
+    @Test
+    void contextSwitchWithoutSessionFiresSessionStarted() throws StorageException {
+        final PlatformEventDispatcher dispatcher = mock(PlatformEventDispatcher.class);
+        final AccumulatingTimeStorage accumulator = new AccumulatingTimeStorage(mock(WrappedLogger.class),
+                new FakeUnifiedStorage(), () -> dispatcher);
+
+        accumulator.switchContext(PLAYER, "Lorias", "survival", "world", 1_000L);
+        accumulator.switchContext(PLAYER, "Lorias", "creative", "world", 2_000L);
+
+        verify(dispatcher, times(1)).sessionStarted(PLAYER, "Lorias", "survival", "world",
+                Instant.ofEpochMilli(1_000L));
+        verifyNoMoreInteractions(dispatcher);
+    }
+
+    @Test
     void unchangedTagsDoNotSplitSegment() throws StorageException {
         final FakeUnifiedStorage storage = new FakeUnifiedStorage();
         final AccumulatingTimeStorage accumulator = accumulator(storage);

@@ -19,22 +19,22 @@ public class LoriTimeTimeAdjustedEvent extends LoriTimeEvent {
     private static final HandlerList HANDLERS = new HandlerList();
 
     /**
-     * the signed adjustment.
+     * The signed adjustment.
      */
     private final Duration amount;
 
     /**
-     * the adjustment scope.
+     * The adjustment scope.
      */
     private final TimeScope scope;
 
     /**
-     * the machine-readable adjustment reason.
+     * The machine-readable adjustment reason.
      */
     private final String reason;
 
     /**
-     * the actor display name.
+     * The actor display name.
      */
     private final String actorName;
 
@@ -57,36 +57,36 @@ public class LoriTimeTimeAdjustedEvent extends LoriTimeEvent {
     }
 
     /**
-     * Gets: the signed adjustment.
+     * Gets the signed adjustment.
      *
-     * @return the value
+     * @return the signed adjustment
      */
     public Duration getAmount() {
         return amount;
     }
 
     /**
-     * Gets: the adjustment scope.
+     * Gets the adjustment scope.
      *
-     * @return the value
+     * @return the adjustment scope
      */
     public TimeScope getScope() {
         return scope;
     }
 
     /**
-     * Gets: the machine-readable adjustment reason.
+     * Gets the machine-readable adjustment reason.
      *
-     * @return the value
+     * @return the machine-readable adjustment reason
      */
     public String getReason() {
         return reason;
     }
 
     /**
-     * Gets: the actor display name.
+     * Gets the actor display name.
      *
-     * @return the value
+     * @return the actor display name
      */
     public String getActorName() {
         return actorName;

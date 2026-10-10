@@ -33,9 +33,9 @@ public class LoriTimeAfkStateChangeEvent extends LoriTimeEvent {
     }
 
     /**
-     * Gets: true when the player became AFK, false when they resumed.
+     * Gets whether the player became AFK.
      *
-     * @return the value
+     * @return {@code true} if the player became AFK, {@code false} if they resumed
      */
     public boolean isAfk() {
         return afk;

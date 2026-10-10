@@ -6,22 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
-- Added `LoriTimeService#formatDuration(Duration)` to the public API, returning LoriTime's localized time format
-- Added `LoriTimeService#isFullAccess()` to the public API so integrations can detect slave servers with limited API access
-- Added native Paper events `LoriTimeSessionStartEvent`, `LoriTimeSessionEndEvent`, `LoriTimeAfkStateChangeEvent` and `LoriTimeTimeAdjustedEvent` (package `com.jannik_kuehn.loritimepaper.event`)
-- Added the same events as Velocity events (package `com.jannik_kuehn.loritimevelocity.event`)
-- Events are fired on standalone and master installations; they are asynchronous on Paper when fired off the main thread
-- Added tracking tags to the public API: `LoriTimeService#setTrackingTag`, `#clearTrackingTag` and a tag-filtered `#getOnlineTime` attribute online time to a namespaced key/value tag, for example one roleplay character per player; AFK time is excluded
-- Added the `LoriTimeTrackingTagChangeEvent` as Paper and Velocity event
-- Added the `loritime:storage` operation `tags` so slave servers can set tracking tags (masters without tag support ignore it)
-- Added database schema version 4 with a `_time_tag` table, applied automatically on startup
+- Added Paper and Velocity events for session start/end, AFK changes, time adjustments and tracking tag changes
+- Added tracking tags to the API (`setTrackingTag`, `clearTrackingTag`, tag-filtered `getOnlineTime`)
+- Added `formatDuration` and `isFullAccess` to the API
+- Added database schema version 4 (`_time_tag` table)
 ### Changed
 - Updated several dependencies
-- Public API on slave servers now answers `getOnlineTime(UUID)` for online players from the slave read cache; all other calls fail with a `LoriTimeApiException`
+- The API on slave servers answers `getOnlineTime(UUID)` for online players, all other calls fail with a `LoriTimeApiException`
 ### Deprecated
 ### Removed
 ### Fixed
-- Fixed public API futures never completing on slave servers or after unexpected runtime errors
 ### Security
 
 ## [2.2.0] - 2026-08-05

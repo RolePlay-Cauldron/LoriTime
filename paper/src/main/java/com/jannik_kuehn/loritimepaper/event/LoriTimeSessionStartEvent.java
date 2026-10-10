@@ -17,17 +17,17 @@ public class LoriTimeSessionStartEvent extends LoriTimeEvent {
     private static final HandlerList HANDLERS = new HandlerList();
 
     /**
-     * the player name.
+     * The player name.
      */
     private final String name;
 
     /**
-     * the server name.
+     * The server name.
      */
     private final String server;
 
     /**
-     * the world name.
+     * The world name.
      */
     private final String world;
 
@@ -48,27 +48,27 @@ public class LoriTimeSessionStartEvent extends LoriTimeEvent {
     }
 
     /**
-     * Gets: the player name.
+     * Gets the player name.
      *
-     * @return the value
+     * @return the player name
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Gets: the server name.
+     * Gets the server name.
      *
-     * @return the value
+     * @return the server name
      */
     public String getServer() {
         return server;
     }
 
     /**
-     * Gets: the world name.
+     * Gets the world name.
      *
-     * @return the value
+     * @return the world name
      */
     public String getWorld() {
         return world;

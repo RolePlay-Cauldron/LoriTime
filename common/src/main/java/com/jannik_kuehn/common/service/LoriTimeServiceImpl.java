@@ -7,27 +7,22 @@ import com.jannik_kuehn.common.api.LoriTimeService;
 import com.jannik_kuehn.common.api.storage.TimeRange;
 import com.jannik_kuehn.common.api.storage.TimeScope;
 import com.jannik_kuehn.common.exception.StorageException;
-import com.jannik_kuehn.common.storage.contract.TimeAccumulator;
 import com.jannik_kuehn.common.storage.contract.UnifiedStorage;
 import com.jannik_kuehn.common.storage.model.ManualTimeAdjustment;
 import com.jannik_kuehn.common.storage.model.TimeEntryReason;
 import com.jannik_kuehn.common.utils.TimeUtil;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 
 /**
  * Default public facade implementation.
  */
-@SuppressWarnings({"PMD.TooManyMethods", "PMD.GodClass", "PMD.CouplingBetweenObjects"})
+@SuppressWarnings({"PMD.TooManyMethods", "PMD.GodClass"})
 public final class LoriTimeServiceImpl implements LoriTimeService {
     /**
      * Parameter name used for player identity validation.
@@ -43,11 +38,6 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
      * Parameter name used for UUID validation.
      */
     private static final String UNIQUE_ID_PARAMETER = "uniqueId";
-
-    /**
-     * Serializes read-modify-write cycles on tracking tags.
-     */
-    private final ReentrantLock tagLock = new ReentrantLock();
 
     /**
      * The backing LoriTime plugin.
@@ -328,13 +318,7 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
         TrackingTagRules.requireValidKey(key);
         TrackingTagRules.requireValidValue(value);
-        return runAsync("Could not set tracking tag for UUID " + uniqueId, () -> {
-            if (plugin.getStorage() == null) {
-                forwardRemoteTag(uniqueId, key, value);
-            } else {
-                updateTags(uniqueId, tags -> tags.put(key, value));
-            }
-        });
+        return runAsync("Could not set tracking tag for UUID " + uniqueId, () -> changeTag(uniqueId, key, value));
     }
 
     /**
@@ -348,13 +332,7 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
     public CompletableFuture<Void> clearTrackingTag(final UUID uniqueId, final String key) {
         Objects.requireNonNull(uniqueId, UNIQUE_ID_PARAMETER);
         TrackingTagRules.requireValidKey(key);
-        return runAsync("Could not clear tracking tag for UUID " + uniqueId, () -> {
-            if (plugin.getStorage() == null) {
-                forwardRemoteTag(uniqueId, key, null);
-            } else {
-                updateTags(uniqueId, tags -> tags.remove(key));
-            }
-        });
+        return runAsync("Could not clear tracking tag for UUID " + uniqueId, () -> changeTag(uniqueId, key, null));
     }
 
     /**
@@ -406,49 +384,40 @@ public final class LoriTimeServiceImpl implements LoriTimeService {
         });
     }
 
-    private void forwardRemoteTag(final UUID uniqueId, final String key, final String value) {
-        final RemoteTagWriter writer = plugin.getRemoteTagWriter().orElseThrow(() -> new LoriTimeApiException(
-                "Cannot change tracking tags: this server has no canonical LoriTime storage (slave mode) "
-                        + "and no tag writer is registered"));
+    private void changeTag(final UUID uniqueId, final String key, final String value) throws StorageException {
+        final boolean slave = plugin.getStorage() == null;
+        if (slave && plugin.getRemoteTagWriter().isEmpty()) {
+            throw slaveModeException("change tracking tags");
+        }
         if (plugin.getServer().getPlayer(uniqueId).isEmpty()) {
             throw new LoriTimeApiException("Cannot change tracking tags: player " + uniqueId + " is not online");
         }
-        writer.changeTag(uniqueId, key, value);
-    }
-
-    @SuppressWarnings("PMD.CloseResource")
-    private void updateTags(final UUID uniqueId, final Consumer<Map<String, String>> change) throws StorageException {
-        requireStorage("change tracking tags");
-        if (plugin.getServer().getPlayer(uniqueId).isEmpty()) {
-            throw new LoriTimeApiException("Cannot change tracking tags: player " + uniqueId + " is not online");
-        }
-        tagLock.lock();
-        try {
-            final TimeAccumulator accumulator = plugin.getAccumulator();
-            final Map<String, String> tags = new HashMap<>(accumulator.getTrackingTags(uniqueId));
-            change.accept(tags);
-            accumulator.switchTags(uniqueId, tags, System.currentTimeMillis());
-        } finally {
-            tagLock.unlock();
+        if (slave) {
+            plugin.getRemoteTagWriter().orElseThrow().changeTag(uniqueId, key, value);
+        } else {
+            plugin.getAccumulator().changeTrackingTag(uniqueId, key, value, System.currentTimeMillis());
         }
     }
 
     private UnifiedStorage requireStorage(final String operation) {
         final UnifiedStorage storage = plugin.getStorage();
         if (storage == null) {
-            throw new LoriTimeApiException("Cannot " + operation
-                    + ": this server has no canonical LoriTime storage (slave mode)");
+            throw slaveModeException(operation);
         }
         return storage;
     }
 
+    private static LoriTimeApiException slaveModeException(final String operation) {
+        return new LoriTimeApiException("Cannot " + operation
+                + ": this server has no canonical LoriTime storage (slave mode)");
+    }
+
     private OptionalLong readRemoteTime(final UUID uniqueId, final TimeScope scope) {
         if (!TimeScope.GLOBAL.equals(scope)) {
-            throw new LoriTimeApiException("Cannot query scoped online time: this server has no canonical "
-                    + "LoriTime storage (slave mode), only global time is available");
+            throw slaveModeException("query scoped online time");
         }
-        final RemoteTimeReader reader = plugin.getRemoteTimeReader().orElseThrow(() -> new LoriTimeApiException(
-                "LoriTime storage is not available on this server (slave mode, no time reader registered)"));
+        final RemoteTimeReader reader = plugin.getRemoteTimeReader()
+                .orElseThrow(() -> slaveModeException("query online time"));
         final OptionalLong cached = reader.getCachedTime(uniqueId);
         if (cached.isEmpty()) {
             reader.requestRefresh(uniqueId);

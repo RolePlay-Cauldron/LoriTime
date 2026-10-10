@@ -24,7 +24,6 @@ import org.junit.jupiter.api.parallel.ResourceLock;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
@@ -306,28 +305,25 @@ class LoriTimeServiceTest {
     }
 
     @Test
-    void setsTrackingTagThroughAccumulatorKeepingExistingTags() throws StorageException {
+    void setsTrackingTagThroughAccumulator() throws StorageException {
         final TimeAccumulator accumulator = mock(TimeAccumulator.class);
         when(plugin.getAccumulator()).thenReturn(accumulator);
-        when(accumulator.getTrackingTags(PLAYER_ID)).thenReturn(Map.of("quests:class", "Mage"));
         onlinePlayer(true);
 
         service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join();
 
-        verify(accumulator).switchTags(eq(PLAYER_ID),
-                eq(Map.of("quests:class", "Mage", "rp:character", "Aria")), anyLong());
+        verify(accumulator).changeTrackingTag(eq(PLAYER_ID), eq("rp:character"), eq("Aria"), anyLong());
     }
 
     @Test
     void clearsTrackingTagThroughAccumulator() throws StorageException {
         final TimeAccumulator accumulator = mock(TimeAccumulator.class);
         when(plugin.getAccumulator()).thenReturn(accumulator);
-        when(accumulator.getTrackingTags(PLAYER_ID)).thenReturn(Map.of("rp:character", "Aria"));
         onlinePlayer(true);
 
         service.clearTrackingTag(PLAYER_ID, "rp:character").join();
 
-        verify(accumulator).switchTags(eq(PLAYER_ID), eq(Map.of()), anyLong());
+        verify(accumulator).changeTrackingTag(eq(PLAYER_ID), eq("rp:character"), isNull(), anyLong());
     }
 
     @Test
@@ -358,7 +354,7 @@ class LoriTimeServiceTest {
                 () -> service.setTrackingTag(PLAYER_ID, "rp:character", "Aria").join());
 
         assertInstanceOf(LoriTimeApiException.class, thrown.getCause(), "Expected public API exception");
-        verify(accumulator, never()).switchTags(any(), any(), anyLong());
+        verify(accumulator, never()).changeTrackingTag(any(), any(), any(), anyLong());
     }
 
     @Test

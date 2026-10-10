@@ -1999,6 +1999,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
 
     private void deleteSelectedRows(final Connection connection, final StorageDeleteRequest request) throws SQLException {
         final DeleteSelection selection = selectDeleteRows(connection, request);
+        timeTable.deleteTagsForSessions(connection, selection.sessionIds());
         deleteRowsById(connection, timeTableName, selection.sessionIds());
         deleteRowsById(connection, adjustmentTableName, selection.adjustmentIds());
     }
@@ -2169,6 +2170,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         if (serverId.isEmpty()) {
             return;
         }
+        timeTable.deleteTagsForServer(connection, worldTableName, serverId.get());
         try (PreparedStatement deleteTime = connection.prepareStatement(
                 "DELETE FROM `" + timeTableName + "` WHERE `world_id` IN "
                         + "(SELECT `id` FROM `" + worldTableName + "` WHERE `server_id` = ?)");
@@ -2191,6 +2193,7 @@ public class UnifiedDatabaseStorage implements UnifiedStorage, AdminStorageMaint
         if (worldId.isEmpty()) {
             return;
         }
+        timeTable.deleteTagsForWorld(connection, worldId.get());
         try (PreparedStatement deleteTime = connection.prepareStatement(
                 "DELETE FROM `" + timeTableName + "` WHERE `world_id` = ?");
              PreparedStatement deleteAdjustments = connection.prepareStatement(

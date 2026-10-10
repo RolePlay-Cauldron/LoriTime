@@ -16,8 +16,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
@@ -271,26 +269,18 @@ public abstract class PluginMessaging {
             return;
         }
         final long observedAtMs = input.readLong();
-        final int count = input.readInt();
-        if (count < 0 || count > TrackingTagRules.MAX_TAGS) {
-            warnStorageIgnored(playerUUID, "invalid tracking tag count " + count);
+        final String key = input.readUTF();
+        final String value = input.readUTF();
+        final boolean clear = value.isEmpty();
+        if (!TrackingTagRules.isValidKey(key) || !clear && !TrackingTagRules.isValidValue(value)) {
+            warnStorageIgnored(playerUUID, "invalid tracking tag '" + key + "'");
             return;
-        }
-        final Map<String, String> tags = new HashMap<>();
-        for (int index = 0; index < count; index++) {
-            final String key = input.readUTF();
-            final String value = input.readUTF();
-            if (!TrackingTagRules.isValidKey(key) || !TrackingTagRules.isValidValue(value)) {
-                warnStorageIgnored(playerUUID, "invalid tracking tag '" + key + "'");
-                return;
-            }
-            tags.put(key, value);
         }
         if (loriTimePlugin.getServer().getPlayer(playerUUID).isEmpty()) {
             warnStorageIgnored(playerUUID, "tracking tags for a player that is not online");
             return;
         }
-        loriTimePlugin.getAccumulator().switchTags(playerUUID, tags, observedAtMs);
+        loriTimePlugin.getAccumulator().changeTrackingTag(playerUUID, key, clear ? null : value, observedAtMs);
     }
 
     private boolean isSupportedStorageVersion(final StorageMessageType messageType, final int protocolVersion, final UUID playerUUID) {

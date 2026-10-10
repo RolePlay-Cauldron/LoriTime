@@ -13,9 +13,6 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,11 +37,6 @@ public class SlaveSessionReporter extends PluginMessaging implements Listener, A
      * Active world contexts keyed by player UUID.
      */
     private final Map<UUID, ActiveRemoteWorld> activeWorlds;
-
-    /**
-     * Tracking tags set through the API keyed by player UUID.
-     */
-    private final Map<UUID, Map<String, String>> activeTags = new ConcurrentHashMap<>();
 
     /**
      * Periodic task that reports active world contexts to the master.
@@ -86,7 +78,6 @@ public class SlaveSessionReporter extends PluginMessaging implements Listener, A
     public void onPlayerLeave(final PlayerQuitEvent event) {
         reportWorld(event.getPlayer());
         activeWorlds.remove(event.getPlayer().getUniqueId());
-        activeTags.remove(event.getPlayer().getUniqueId());
     }
 
     /**
@@ -109,27 +100,9 @@ public class SlaveSessionReporter extends PluginMessaging implements Listener, A
 
     @Override
     public void changeTag(final UUID uniqueId, final String key, final String value) {
-        final Map<String, String> tags = activeTags.compute(uniqueId, (ignored, current) -> {
-            final Map<String, String> next = current == null ? new HashMap<>() : new HashMap<>(current);
-            if (value == null) {
-                next.remove(key);
-            } else {
-                next.put(key, value);
-            }
-            return Map.copyOf(next);
-        });
-        log.debug("Reporting remote tracking tags for player " + uniqueId);
-        final List<Object> message = new ArrayList<>();
-        message.add(uniqueId);
-        message.add(StorageMessageType.TAGS.wireValue());
-        message.add(STORAGE_PROTOCOL_VERSION);
-        message.add(System.currentTimeMillis());
-        message.add(tags.size());
-        tags.forEach((tagKey, tagValue) -> {
-            message.add(tagKey);
-            message.add(tagValue);
-        });
-        sendPluginMessage(SLAVED_TIME_STORAGE, message.toArray());
+        log.debug("Reporting remote tracking tag change for player " + uniqueId);
+        sendPluginMessage(SLAVED_TIME_STORAGE, uniqueId, StorageMessageType.TAGS.wireValue(),
+                STORAGE_PROTOCOL_VERSION, System.currentTimeMillis(), key, value == null ? "" : value);
     }
 
     private void reportWorlds() {
@@ -178,7 +151,6 @@ public class SlaveSessionReporter extends PluginMessaging implements Listener, A
     public void close() {
         updateTask.cancel();
         activeWorlds.clear();
-        activeTags.clear();
     }
 
     private record ActiveRemoteWorld(UUID uuid, String world, long observedAtMs) {
