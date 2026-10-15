@@ -18,6 +18,29 @@
   <version>${revision}${changelist}</version>
   <name>LoriTime</name>
   <description>A plugin to capture the time that a player spends on your server network</description>
+  <url>https://github.com/RolePlay-Cauldron/LoriTime</url>
+
+  <licenses>
+    <license>
+      <name>GNU General Public License v3.0</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/RolePlay-Cauldron/LoriTime</url>
+    <connection>scm:git:https://github.com/RolePlay-Cauldron/LoriTime.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/RolePlay-Cauldron/LoriTime.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub RolePlay-Cauldron Apache Maven Packages</name>
+      <url>https://maven.pkg.github.com/RolePlay-Cauldron/LoriTime</url>
+    </repository>
+  </distributionManagement>
 
   <modules>
     <module>config</module>

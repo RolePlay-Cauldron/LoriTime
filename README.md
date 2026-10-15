@@ -2,8 +2,8 @@
 
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/java-21-orange.svg)](pom.xml)
-[![Minecraft](https://img.shields.io/badge/minecraft-1.21%2B-brightgreen.svg)](docs/Compatibility.md)
-[![Platform](https://img.shields.io/badge/platform-Paper%20%7C%20Folia%20%7C%20Velocity-5865f2.svg)](docs/Compatibility.md)
+[![Minecraft](https://img.shields.io/badge/minecraft-1.21%2B-brightgreen.svg)](https://roleplay-cauldron.github.io/loritime/reference/compatibility/)
+[![Platform](https://img.shields.io/badge/platform-Paper%20%7C%20Folia%20%7C%20Velocity-5865f2.svg)](https://roleplay-cauldron.github.io/loritime/reference/compatibility/)
 
 LoriTime tracks how long players are connected to a Minecraft server or network. It supports standalone Paper/Folia servers as well as Velocity-based networks with proxy-owned storage and backend context reporting.
 
@@ -61,3 +61,113 @@ AFK intervals. Open intervals left by shutdowns or crashes are recovered with th
 5. Start the server again.
 
 For proxy networks, run Velocity as `master` and Paper/Folia backends as `slave` when the proxy should own canonical storage. See [Setup](https://roleplay-cauldron.github.io/loritime/guide/setup/) and [Storage](https://roleplay-cauldron.github.io/loritime/reference/storage/) for the exact configuration.
+
+## Using the API in your Plugins
+
+We release this project to **GitHub Packages** but also provide a Mirror for this repository.
+
+### Option 1: Adding the **GitHub Packages** Repository
+
+> [!IMPORTANT]
+> Note that GitHub **always** requires you to authenticate against the GitHub Packages Repository,
+> even though this is a public repository. This is a limitation by GitHub, not by us.
+
+1) Configure your Maven `~/.m2/settings.xml` with credentials. Create your Token (classic) [here](https://github.com/settings/tokens), you only require the `read:packages` scope
+```xml
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <servers>
+    <server>
+      <id>github</id>
+      <username>YOUR_GH_USERNAME</username>
+      <password>YOUR_GITHUB_TOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
+
+2) Add the repository to your plugins `pom.xml`
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <name>GitHub Packages</name>
+    <url>https://maven.pkg.github.com/RolePlay-Cauldron/Spellbook</url>
+  </repository>
+</repositories>
+```
+
+### Option 2: Adding a **Mirror** Repository
+
+1) Add the repository to your plugins `pom.xml`
+```xml
+<repositories>
+  <repository>
+    <id>mvn.velyn.me-github</id>
+    <url>https://mvn.velyn.me/github</url>
+  </repository>
+</repositories>
+```
+
+> [!IMPORTANT]
+> This Mirror is hosted by one of our maintainers and is subject to change or downtime.
+> This mirror is maintained by a maintainer and is not guaranteed.
+> It may change or go offline without notice.
+> Prefer GitHub Packages whenever possible, especially for reliable builds in CI/CD Environments!
+
+### Add the Dependencies
+
+Only choose the dependencies that you want. `common` contains the platform independent API,
+`loritimepaper` and `loritimevelocity` contain the platform specific plugin classes.
+```xml
+<dependencies>
+  <dependency>
+    <groupId>com.jannik_kuehn</groupId>
+    <artifactId>common</artifactId>
+    <version>2.3.1</version>
+    <scope>provided</scope>
+  </dependency>
+  <dependency>
+    <groupId>com.jannik_kuehn</groupId>
+    <artifactId>loritimepaper</artifactId>
+    <version>2.3.1</version>
+    <scope>provided</scope>
+  </dependency>
+</dependencies>
+```
+
+Since LoriTime is a standalone Plugin, use the `provided` scope and do **not** shade it into your plugin.
+Declare LoriTime as a plugin dependency instead, so the server loads it before your plugin.
+
+### Declare the Plugin Dependency
+
+Paper / Folia (`paper-plugin.yml`):
+```yaml
+dependencies:
+  server:
+    LoriTimePaper:
+      load: BEFORE
+      required: true
+      join-classpath: true
+```
+
+Paper / Folia (legacy `plugin.yml`):
+```yaml
+depend: [ LoriTimePaper ]
+```
+
+Velocity (`velocity-plugin.json`):
+```json
+"dependencies": [
+  {
+    "id": "loritimevelocity",
+    "optional": false
+  }
+]
+```
+
+Velocity (`@Plugin` annotation):
+```java
+@Plugin(id = "myplugin", dependencies = {@Dependency(id = "loritimevelocity")})
+```
