@@ -110,6 +110,10 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>com.kohlschutter.mavenplugins</groupId>
+        <artifactId>copy-rename-maven-plugin</artifactId>
+      </plugin>
     </plugins>
   </build>
 </project>

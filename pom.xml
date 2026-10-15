@@ -362,104 +362,6 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-            <configuration>
-              <createDependencyReducedPom>false</createDependencyReducedPom>
-              <shadedArtifactAttached>true</shadedArtifactAttached>
-              <filters>
-                <filter>
-                  <artifact>*</artifact>
-                  <excludes>
-                    <exclude>META-INF/*.SF</exclude>
-                    <exclude>META-INF/*.DSA</exclude>
-                    <exclude>META-INF/*.RSA</exclude>
-                  </excludes>
-                </filter>
-                <filter>
-                  <artifact>org.bstats</artifact>
-                  <includes>
-                    <include>org/bstats/**</include>
-                  </includes>
-                </filter>
-                <filter>
-                  <artifact>com.mysql</artifact>
-                  <includes>
-                    <include>com/mysql/cj/**</include>
-                  </includes>
-                </filter>
-                <filter>
-                  <artifact>org.mariadb.jdbc</artifact>
-                  <includes>
-                    <include>org/mariadb/jdbc/**</include>
-                    <include>META-INF/services/**</include>
-                  </includes>
-                </filter>
-                <filter>
-                  <artifact>org.sqlite</artifact>
-                  <includes>
-                    <include>org/sqlite/**</include>
-                  </includes>
-                </filter>
-                <filter>
-                  <artifact>com.github.roleplaycauldron</artifact>
-                  <includes>
-                    <include>com/github/roleplaycauldron/**</include>
-                  </includes>
-                </filter>
-              </filters>
-              <relocations>
-                <relocation>
-                  <pattern>org.apache.commons</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.org.apache.commons</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.apache.maven</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.org.apache.maven</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.zaxxer.hikari</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.com.zaxxer.hikari</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.mariadb.jdbc</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.org.mariadb.jdbc</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.bstats</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.org.bstats</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.google.code.gson</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.com.google.code.gson</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.yaml</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.org.yaml</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.mysql</pattern>
-                  <shadedPattern>${project.groupId}.dependencies.com.mysql</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.jannik_kuehn</pattern>
-                  <shadedPattern>${project.groupId}</shadedPattern>
-                </relocation>
-              </relocations>
-              <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-              </transformers>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
         <executions>
           <execution>
@@ -479,25 +381,6 @@
             <goals>
               <goal>jar</goal>
             </goals>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>com.kohlschutter.mavenplugins</groupId>
-        <artifactId>copy-rename-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>copy</id>
-            <phase>package</phase>
-            <goals>
-              <goal>copy</goal>
-            </goals>
-            <configuration>
-              <sourceFile>${project.build.directory}/${project.artifactId}-${project.version}-shaded.jar
-              </sourceFile>
-              <destinationFile>${project.build.directory}/${project.name}.jar</destinationFile>
-              <ignoreMissing>true</ignoreMissing>
-            </configuration>
           </execution>
         </executions>
       </plugin>
@@ -591,6 +474,100 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-shade-plugin</artifactId>
           <version>3.6.2</version>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+                <createDependencyReducedPom>false</createDependencyReducedPom>
+                <shadedArtifactAttached>true</shadedArtifactAttached>
+                <filters>
+                  <filter>
+                    <artifact>*</artifact>
+                    <excludes>
+                      <exclude>META-INF/*.SF</exclude>
+                      <exclude>META-INF/*.DSA</exclude>
+                      <exclude>META-INF/*.RSA</exclude>
+                    </excludes>
+                  </filter>
+                  <filter>
+                    <artifact>org.bstats</artifact>
+                    <includes>
+                      <include>org/bstats/**</include>
+                    </includes>
+                  </filter>
+                  <filter>
+                    <artifact>com.mysql</artifact>
+                    <includes>
+                      <include>com/mysql/cj/**</include>
+                    </includes>
+                  </filter>
+                  <filter>
+                    <artifact>org.mariadb.jdbc</artifact>
+                    <includes>
+                      <include>org/mariadb/jdbc/**</include>
+                      <include>META-INF/services/**</include>
+                    </includes>
+                  </filter>
+                  <filter>
+                    <artifact>org.sqlite</artifact>
+                    <includes>
+                      <include>org/sqlite/**</include>
+                    </includes>
+                  </filter>
+                  <filter>
+                    <artifact>com.github.roleplaycauldron</artifact>
+                    <includes>
+                      <include>com/github/roleplaycauldron/**</include>
+                    </includes>
+                  </filter>
+                </filters>
+                <relocations>
+                  <relocation>
+                    <pattern>org.apache.commons</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.org.apache.commons</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>org.apache.maven</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.org.apache.maven</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>com.zaxxer.hikari</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.com.zaxxer.hikari</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>org.mariadb.jdbc</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.org.mariadb.jdbc</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>org.bstats</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.org.bstats</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>com.google.code.gson</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.com.google.code.gson</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>org.yaml</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.org.yaml</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>com.mysql</pattern>
+                    <shadedPattern>${project.groupId}.dependencies.com.mysql</shadedPattern>
+                  </relocation>
+                  <relocation>
+                    <pattern>com.jannik_kuehn</pattern>
+                    <shadedPattern>${project.groupId}</shadedPattern>
+                  </relocation>
+                </relocations>
+                <transformers>
+                  <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                </transformers>
+              </configuration>
+            </execution>
+          </executions>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -663,6 +640,21 @@
           <groupId>com.kohlschutter.mavenplugins</groupId>
           <artifactId>copy-rename-maven-plugin</artifactId>
           <version>2.0.0</version>
+          <executions>
+            <execution>
+              <id>copy</id>
+              <phase>package</phase>
+              <goals>
+                <goal>copy</goal>
+              </goals>
+              <configuration>
+                <sourceFile>${project.build.directory}/${project.artifactId}-${project.version}-shaded.jar
+                </sourceFile>
+                <destinationFile>${project.build.directory}/${project.name}.jar</destinationFile>
+                <ignoreMissing>true</ignoreMissing>
+              </configuration>
+            </execution>
+          </executions>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
