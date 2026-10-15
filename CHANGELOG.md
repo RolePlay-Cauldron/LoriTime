@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] - ${maven.build.timestamp}
 ### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [2.3.1] - 2026-10-15
+### Added
 - Releases are now published to GitHub Packages and can be used as a Maven dependency (see README)
 ### Changed
 ### Deprecated
