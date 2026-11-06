@@ -48,6 +48,13 @@
                   <include>org.bstats</include>
                 </includes>
               </artifactSet>
+              <!-- Relocated only in the final plugin JAR: common and this module use Spellbook directly -->
+              <relocations combine.children="append">
+                <relocation>
+                  <pattern>com.github.roleplaycauldron.spellbook</pattern>
+                  <shadedPattern>${project.groupId}.dependencies.com.github.roleplaycauldron.spellbook</shadedPattern>
+                </relocation>
+              </relocations>
             </configuration>
           </execution>
         </executions>

@@ -10,6 +10,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Deprecated
 ### Removed
 ### Fixed
+- Relocated the shaded Spellbook library so it no longer conflicts with other plugins that ship Spellbook
+  (`LinkageError: loader constraint violation` in plugins that join LoriTime's classpath)
 ### Security
 
 ## [2.3.1] - 2026-10-15
