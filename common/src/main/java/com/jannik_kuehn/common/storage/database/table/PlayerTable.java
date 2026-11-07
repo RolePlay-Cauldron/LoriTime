@@ -1,5 +1,6 @@
 package com.jannik_kuehn.common.storage.database.table;
 
+import com.jannik_kuehn.common.storage.database.DatabaseDialect;
 import com.jannik_kuehn.common.storage.model.RecentPlayerIdentity;
 import com.jannik_kuehn.common.utils.UuidUtil;
 
@@ -7,9 +8,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
-import java.sql.Types;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -160,7 +159,7 @@ public class PlayerTable {
     /**
      * Retrieves player identities observed inside a recent window.
      *
-     * @param connection the database connection
+     * @param connection         the database connection
      * @param recentConditionSql SQL condition for recent rows
      * @return recent player identities
      * @throws SQLException if a database access error occurs
@@ -218,7 +217,7 @@ public class PlayerTable {
     /**
      * Ensures that a player with the specified UUID exists in the database. If the player exists,
      * their name and last seen timestamp are updated only when a name is provided. If the player
-     * does not exist, they are inserted into the database with the provided UUID and optional name.
+     * does not exist, their UUID is inserted atomically before the optional name is applied.
      *
      * @param connection the database connection to use for the operation
      * @param uuid       the unique identifier of the player
@@ -228,37 +227,19 @@ public class PlayerTable {
      */
     public long ensurePlayer(final Connection connection, final UUID uuid, final Optional<String> name) throws SQLException {
         final Optional<Long> existingId = findIdByUuid(connection, uuid);
+        final long playerId;
         if (existingId.isPresent()) {
-            if (name.isPresent()) {
-                releaseTakenName(connection, name.get(), uuid);
-                updatePlayerName(connection, existingId.get(), name.get());
-            }
-            return existingId.get();
+            playerId = existingId.get();
+        } else {
+            insertPlayerIfAbsent(connection, uuid);
+            playerId = findIdByUuid(connection, uuid)
+                    .orElseThrow(() -> new SQLException("Unable to find player after atomic insert"));
         }
-
         if (name.isPresent()) {
             releaseTakenName(connection, name.get(), uuid);
+            updatePlayerName(connection, playerId, name.get());
         }
-
-        try (PreparedStatement insert = connection.prepareStatement(
-                "INSERT INTO `" + tableName + "` (`uuid`, `name`, `last_seen`) VALUES (?, ?, ?)",
-                Statement.RETURN_GENERATED_KEYS)) {
-            insert.setBytes(1, UuidUtil.toBytes(uuid));
-            if (name.isPresent()) {
-                insert.setString(2, name.get());
-                insert.setTimestamp(3, Timestamp.from(Instant.now()));
-            } else {
-                insert.setNull(2, Types.VARCHAR);
-                insert.setNull(3, Types.TIMESTAMP);
-            }
-            insert.executeUpdate();
-            try (ResultSet keys = insert.getGeneratedKeys()) {
-                if (keys.next()) {
-                    return keys.getLong(1);
-                }
-            }
-        }
-        throw new SQLException("Unable to insert player");
+        return playerId;
     }
 
     /**
@@ -297,6 +278,19 @@ public class PlayerTable {
     @Override
     public String toString() {
         return tableName;
+    }
+
+    private void insertPlayerIfAbsent(final Connection connection, final UUID uuid) throws SQLException {
+        final DatabaseDialect dialect = DatabaseDialect.getEngineByName(connection.getMetaData().getDatabaseProductName());
+        final String conflictClause = switch (dialect) {
+            case SQLITE -> " ON CONFLICT (`uuid`) DO NOTHING";
+            case MYSQL, MARIADB -> " ON DUPLICATE KEY UPDATE `uuid` = `uuid`";
+        };
+        try (PreparedStatement insert = connection.prepareStatement(
+                "INSERT INTO `" + tableName + "` (`uuid`) VALUES (?)" + conflictClause)) {
+            insert.setBytes(1, UuidUtil.toBytes(uuid));
+            insert.executeUpdate();
+        }
     }
 
     private void releaseTakenName(final Connection connection, final String name, final UUID owner) throws SQLException {
